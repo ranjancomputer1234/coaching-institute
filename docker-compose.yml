@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: redi-postgres
+    environment:
+      POSTGRES_USER: redi
+      POSTGRES_PASSWORD: redi_local_dev
+      POSTGRES_DB: redi
+    ports:
+      - "5432:5432"
+    volumes:
+      - redi_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U redi -d redi"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  redi_pg:

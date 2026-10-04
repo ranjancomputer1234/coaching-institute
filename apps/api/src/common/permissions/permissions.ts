@@ -1,0 +1,135 @@
+/** Granular admin permission keys (requirements §5.3) */
+export const PERMISSIONS = [
+  'users.read',
+  'users.update',
+  'users.suspend',
+  'users.export',
+  'users.impersonate_safe',
+  'enrollments.create',
+  'enrollments.revoke',
+  'content.create',
+  'content.edit',
+  'content.review',
+  'content.publish',
+  'content.archive',
+  'explore.manage',
+  'banners.manage',
+  'assessments.author',
+  'assessments.publish',
+  'results.read',
+  'results.recompute',
+  'results.override',
+  'results.publish',
+  'semester.review',
+  'semester.approve',
+  'documents.generate',
+  'documents.issue',
+  'documents.revoke',
+  'live.schedule',
+  'live.host',
+  'live.moderate',
+  'notifications.send_single',
+  'notifications.send_bulk',
+  'payments.read',
+  'payments.refund_request',
+  'payments.refund_approve',
+  'settings.manage',
+  'admins.manage',
+  'audit.read',
+  'reports.read',
+] as const;
+
+export type Permission = (typeof PERMISSIONS)[number];
+
+export const ALL_PERMISSIONS: Permission[] = [...PERMISSIONS];
+
+export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
+  super_admin: ALL_PERMISSIONS,
+  operations_admin: [
+    'users.read',
+    'users.update',
+    'users.suspend',
+    'users.export',
+    'enrollments.create',
+    'enrollments.revoke',
+    'explore.manage',
+    'banners.manage',
+    'notifications.send_single',
+    'reports.read',
+    'audit.read',
+    'payments.read',
+    'results.read',
+    'semester.review',
+    'documents.generate',
+    'live.schedule',
+  ],
+  academic_admin: [
+    'users.read',
+    'enrollments.create',
+    'enrollments.revoke',
+    'content.create',
+    'content.edit',
+    'content.review',
+    'content.publish',
+    'content.archive',
+    'assessments.author',
+    'assessments.publish',
+    'results.read',
+    'results.recompute',
+    'results.publish',
+    'semester.review',
+    'semester.approve',
+    'reports.read',
+    'notifications.send_single',
+  ],
+  content_editor: [
+    'content.create',
+    'content.edit',
+    'explore.manage',
+    'banners.manage',
+  ],
+  reviewer_publisher: [
+    'content.review',
+    'content.publish',
+    'content.archive',
+    'explore.manage',
+    'banners.manage',
+  ],
+  auditor: [
+    'audit.read',
+    'reports.read',
+    'payments.read',
+    'results.read',
+    'users.read',
+  ],
+};
+
+export const ROLE_META: Record<
+  string,
+  { name: string; description: string }
+> = {
+  super_admin: {
+    name: 'Super Admin',
+    description: 'Full platform control',
+  },
+  operations_admin: {
+    name: 'Operations Admin',
+    description: 'Daily institute operations',
+  },
+  academic_admin: {
+    name: 'Academic Admin',
+    description: 'Courses, assessments, approvals',
+  },
+  content_editor: {
+    name: 'Content Editor',
+    description: 'Draft and edit learner content',
+  },
+  reviewer_publisher: {
+    name: 'Reviewer / Publisher',
+    description: 'Review and publish content',
+  },
+  auditor: {
+    name: 'Auditor',
+    description: 'Read-only audit and reports',
+  },
+};
