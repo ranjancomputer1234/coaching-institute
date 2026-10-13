@@ -25,7 +25,8 @@ describe('Public API (e2e)', () => {
       .get('/api/crypto/offline-verification')
       .expect(200)
       .expect((res) => {
-        if (!res.body.kid || !res.body.algorithm) {
+        const body = res.body as { kid?: string; algorithm?: string };
+        if (!body.kid || !body.algorithm) {
           throw new Error('missing offline verification fields');
         }
       });
