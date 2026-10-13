@@ -53,10 +53,7 @@ export class LearnerCatalogueController {
 
   @UseGuards(LearnerJwtAuthGuard)
   @Post('courses/:id/enroll')
-  enroll(
-    @Param('id') id: string,
-    @CurrentUser() user: { learnerId: string },
-  ) {
+  enroll(@Param('id') id: string, @CurrentUser() user: { learnerId: string }) {
     return this.catalogue.enroll(id, user.learnerId);
   }
 

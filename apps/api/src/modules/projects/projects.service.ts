@@ -38,7 +38,9 @@ export class ProjectsService {
 
   listSubmissions(status?: ProjectSubmissionStatus) {
     return this.prisma.projectSubmission.findMany({
-      where: status ? { status } : { status: ProjectSubmissionStatus.submitted },
+      where: status
+        ? { status }
+        : { status: ProjectSubmissionStatus.submitted },
       include: {
         project: { select: { id: true, title: true } },
         learner: {

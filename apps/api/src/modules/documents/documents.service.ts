@@ -101,9 +101,7 @@ export class DocumentsService {
         title: `${dto.title} (PDF)`,
         kind: ResourceKind.pdf,
         mimeType: 'application/pdf',
-        ...(dto.courseId
-          ? { course: { connect: { id: dto.courseId } } }
-          : {}),
+        ...(dto.courseId ? { course: { connect: { id: dto.courseId } } } : {}),
         downloadable: true,
         previewAllowed: false,
         lifecycle: ContentLifecycle.published,

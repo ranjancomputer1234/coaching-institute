@@ -151,7 +151,9 @@ export class UsersService {
           fieldErrors: {},
         });
       }
-      await this.prisma.adminRoleAssignment.deleteMany({ where: { adminId: id } });
+      await this.prisma.adminRoleAssignment.deleteMany({
+        where: { adminId: id },
+      });
       await this.prisma.adminRoleAssignment.create({
         data: { adminId: id, roleId: role.id },
       });

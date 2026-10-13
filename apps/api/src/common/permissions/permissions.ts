@@ -104,32 +104,30 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   ],
 };
 
-export const ROLE_META: Record<
-  string,
-  { name: string; description: string }
-> = {
-  super_admin: {
-    name: 'Super Admin',
-    description: 'Full platform control',
-  },
-  operations_admin: {
-    name: 'Operations Admin',
-    description: 'Daily institute operations',
-  },
-  academic_admin: {
-    name: 'Academic Admin',
-    description: 'Courses, assessments, approvals',
-  },
-  content_editor: {
-    name: 'Content Editor',
-    description: 'Draft and edit learner content',
-  },
-  reviewer_publisher: {
-    name: 'Reviewer / Publisher',
-    description: 'Review and publish content',
-  },
-  auditor: {
-    name: 'Auditor',
-    description: 'Read-only audit and reports',
-  },
-};
+export const ROLE_META: Record<string, { name: string; description: string }> =
+  {
+    super_admin: {
+      name: 'Super Admin',
+      description: 'Full platform control',
+    },
+    operations_admin: {
+      name: 'Operations Admin',
+      description: 'Daily institute operations',
+    },
+    academic_admin: {
+      name: 'Academic Admin',
+      description: 'Courses, assessments, approvals',
+    },
+    content_editor: {
+      name: 'Content Editor',
+      description: 'Draft and edit learner content',
+    },
+    reviewer_publisher: {
+      name: 'Reviewer / Publisher',
+      description: 'Review and publish content',
+    },
+    auditor: {
+      name: 'Auditor',
+      description: 'Read-only audit and reports',
+    },
+  };

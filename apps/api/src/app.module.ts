@@ -25,6 +25,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { EntitlementsModule } from './modules/entitlements/entitlements.module';
 import { ContentAccessModule } from './modules/content-access/content-access.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { PlatformModule } from './modules/platform/platform.module';
     DocumentsModule,
     EntitlementsModule,
     PlatformModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

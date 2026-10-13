@@ -76,7 +76,9 @@ export class PlatformService {
   }
 
   async publishEditorial(id: string, actor: Actor) {
-    const before = await this.prisma.editorialItem.findUnique({ where: { id } });
+    const before = await this.prisma.editorialItem.findUnique({
+      where: { id },
+    });
     if (!before) {
       throw new NotFoundException({
         code: 'NOT_FOUND',

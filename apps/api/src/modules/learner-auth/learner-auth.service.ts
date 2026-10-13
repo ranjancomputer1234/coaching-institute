@@ -3,7 +3,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { LearnerAccountState } from '@prisma/client';
@@ -23,13 +23,14 @@ export class LearnerAuthService {
   ) {}
 
   private async signLearnerToken(learnerId: string, email?: string | null) {
-    const secret = this.config.get<string>(
+    const secret: string = this.config.get<string>(
       'LEARNER_JWT_SECRET',
-      this.config.get<string>('JWT_SECRET', 'dev-change-me')!,
+      this.config.get<string>('JWT_SECRET', 'dev-change-me'),
     );
-    const expiresIn = this.config.get('LEARNER_JWT_EXPIRES_IN', '30d') as
-      | `${number}d`
-      | `${number}h`;
+    const expiresIn = this.config.get<string>(
+      'LEARNER_JWT_EXPIRES_IN',
+      '30d',
+    ) as JwtSignOptions['expiresIn'];
     return this.jwtService.signAsync(
       { sub: learnerId, email: email ?? undefined, typ: 'learner' },
       { secret, expiresIn },

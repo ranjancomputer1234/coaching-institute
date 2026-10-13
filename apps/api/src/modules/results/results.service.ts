@@ -18,10 +18,7 @@ export class ResultsService {
 
   findAll(published?: boolean) {
     return this.prisma.result.findMany({
-      where:
-        published === undefined
-          ? undefined
-          : { published },
+      where: published === undefined ? undefined : { published },
       include: {
         attempt: {
           include: {
@@ -61,7 +58,11 @@ export class ResultsService {
     return result;
   }
 
-  async publishForTest(testId: string, reason: string | undefined, actor: Actor) {
+  async publishForTest(
+    testId: string,
+    reason: string | undefined,
+    actor: Actor,
+  ) {
     const unpublished = await this.prisma.result.findMany({
       where: {
         published: false,

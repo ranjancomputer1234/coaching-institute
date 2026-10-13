@@ -1,7 +1,8 @@
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import {
   assertProductionConfig,
   corsOrigins,
@@ -13,6 +14,9 @@ async function bootstrap() {
   assertProductionConfig(config);
 
   app.setGlobalPrefix('api');
+  app.useGlobalFilters(
+    new PrismaExceptionFilter(app.get(HttpAdapterHost).httpAdapter),
+  );
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -29,4 +33,4 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`API running on http://localhost:${port}/api`);
 }
-bootstrap();
+void bootstrap();

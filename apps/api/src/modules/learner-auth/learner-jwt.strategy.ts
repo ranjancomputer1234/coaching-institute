@@ -25,7 +25,7 @@ export class LearnerJwtStrategy extends PassportStrategy(
       ignoreExpiration: false,
       secretOrKey: config.get<string>(
         'LEARNER_JWT_SECRET',
-        config.get<string>('JWT_SECRET', 'dev-change-me')!,
+        config.get<string>('JWT_SECRET', 'dev-change-me'),
       ),
     });
   }

@@ -10,7 +10,7 @@ import { CreateBannerDto, UpdateBannerDto } from './dto/banner.dto';
 
 type Actor = { userId: string; email?: string };
 
-const UNSAFE_SCHEMES = /^(javascript|data|vbscript):/i;
+const UNSAFE_SCHEMES = /^\s*(javascript|data|vbscript):/i;
 
 @Injectable()
 export class BannersService {
@@ -45,10 +45,10 @@ export class BannersService {
         fieldErrors: {},
       });
     }
-    if (kind === 'external' && UNSAFE_SCHEMES.test(ref)) {
+    if (UNSAFE_SCHEMES.test(ref)) {
       throw new BadRequestException({
         code: 'INVALID_TARGET',
-        message: 'Unsafe external URL scheme',
+        message: 'Unsafe target URL scheme',
         fieldErrors: { targetRef: ['Unsafe scheme'] },
       });
     }

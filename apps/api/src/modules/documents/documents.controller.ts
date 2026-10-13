@@ -75,10 +75,7 @@ export class DocumentsController {
 
   @UseGuards(LearnerJwtAuthGuard)
   @Get('me/documents/:id')
-  mineOne(
-    @Param('id') id: string,
-    @CurrentUser() user: { learnerId: string },
-  ) {
+  mineOne(@Param('id') id: string, @CurrentUser() user: { learnerId: string }) {
     return this.documents.getForLearner(user.learnerId, id);
   }
 

@@ -1,4 +1,4 @@
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 
 const PLACEHOLDER =
   /change-me|changeme|dev-change|dev-learner|dev-offline|replace-me|example/i;
@@ -25,9 +25,7 @@ export function assertProductionConfig(config: ConfigService): void {
     );
   }
   if (!/[?&]sslmode=require(?:&|$)/.test(databaseUrl)) {
-    throw new Error(
-      'Production DATABASE_URL must include sslmode=require',
-    );
+    throw new Error('Production DATABASE_URL must include sslmode=require');
   }
 
   for (const key of [
@@ -56,9 +54,7 @@ export function assertProductionConfig(config: ConfigService): void {
   for (const origin of cors.split(',')) {
     const trimmed = origin.trim();
     if (!trimmed.startsWith('https://')) {
-      throw new Error(
-        'Production CORS_ORIGIN must list https origins only',
-      );
+      throw new Error('Production CORS_ORIGIN must list https origins only');
     }
   }
 

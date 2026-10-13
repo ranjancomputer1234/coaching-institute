@@ -3,11 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  AttemptStatus,
-  AuditSeverity,
-  ContentLifecycle,
-} from '@prisma/client';
+import { AttemptStatus, AuditSeverity, ContentLifecycle } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateAttemptDto, SaveAnswerDto } from './dto/attempt.dto';
@@ -78,9 +74,7 @@ export class AttemptsService {
       });
     }
 
-    const expiresAt = new Date(
-      Date.now() + test.durationMinutes * 60 * 1000,
-    );
+    const expiresAt = new Date(Date.now() + test.durationMinutes * 60 * 1000);
     const snapshot = {
       testRevision: test.revision,
       questions: test.questions.map((tq) => ({

@@ -58,7 +58,9 @@ export class EntitlementsService {
   }
 
   async revoke(id: string, dto: RevokeEntitlementDto, actor: AdminActor) {
-    const existing = await this.prisma.entitlement.findUnique({ where: { id } });
+    const existing = await this.prisma.entitlement.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException({
         code: 'NOT_FOUND',

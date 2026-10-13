@@ -78,11 +78,7 @@ export class SemesterReviewsService {
     return semester;
   }
 
-  async submitReview(
-    enrollmentId: string,
-    semesterId: string,
-    actor: Actor,
-  ) {
+  async submitReview(enrollmentId: string, semesterId: string, actor: Actor) {
     const enrollment = await this.prisma.enrollment.findUnique({
       where: { id: enrollmentId },
       include: { learner: true, course: true },

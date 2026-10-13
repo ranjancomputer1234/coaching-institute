@@ -1,8 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  ContentLifecycle,
-  LearnerAccountState,
-} from '@prisma/client';
+import { ContentLifecycle, LearnerAccountState } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 
 @Injectable()

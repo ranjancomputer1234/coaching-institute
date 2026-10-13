@@ -30,8 +30,7 @@ export class ResultsController {
   @Get()
   @RequirePermissions('results.read')
   findAll(@Query('published') published?: string) {
-    const flag =
-      published === undefined ? undefined : published === 'true';
+    const flag = published === undefined ? undefined : published === 'true';
     return this.resultsService.findAll(flag);
   }
 

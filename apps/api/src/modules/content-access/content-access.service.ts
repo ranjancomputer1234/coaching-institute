@@ -44,7 +44,7 @@ export class ContentAccessService {
   private offlineSecret() {
     return (
       this.config.get<string>('OFFLINE_GRANT_SECRET') ||
-      this.config.get<string>('JWT_SECRET', 'dev-change-me')!
+      this.config.get<string>('JWT_SECRET', 'dev-change-me')
     );
   }
 
@@ -110,13 +110,8 @@ export class ContentAccessService {
       where: {
         learnerId,
         state: EntitlementState.active,
-        OR: [
-          { courseId },
-          { scopeKind: 'course', scopeRef: courseId },
-        ],
-        AND: [
-          { OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
-        ],
+        OR: [{ courseId }, { scopeKind: 'course', scopeRef: courseId }],
+        AND: [{ OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] }],
       },
       orderBy: { createdAt: 'desc' },
     });

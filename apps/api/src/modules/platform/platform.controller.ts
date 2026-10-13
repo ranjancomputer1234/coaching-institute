@@ -46,10 +46,7 @@ export class PlatformController {
 
   @Post('editorial')
   @RequirePermissions('content.create')
-  createEditorial(
-    @Body() dto: CreateEditorialDto,
-    @CurrentUser() user: Actor,
-  ) {
+  createEditorial(@Body() dto: CreateEditorialDto, @CurrentUser() user: Actor) {
     return this.platform.createEditorial(dto, user);
   }
 

@@ -59,9 +59,7 @@ export class AuditService {
       },
       orderBy: { occurredAtUtc: 'desc' },
       take,
-      ...(params.cursor
-        ? { skip: 1, cursor: { id: params.cursor } }
-        : {}),
+      ...(params.cursor ? { skip: 1, cursor: { id: params.cursor } } : {}),
     });
   }
 }

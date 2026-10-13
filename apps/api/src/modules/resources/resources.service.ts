@@ -66,12 +66,8 @@ export class ResourcesService {
         kind: dto.kind,
         mimeType: dto.mimeType,
         byteSize: dto.byteSize,
-        ...(dto.courseId
-          ? { course: { connect: { id: dto.courseId } } }
-          : {}),
-        ...(dto.lessonId
-          ? { lesson: { connect: { id: dto.lessonId } } }
-          : {}),
+        ...(dto.courseId ? { course: { connect: { id: dto.courseId } } } : {}),
+        ...(dto.lessonId ? { lesson: { connect: { id: dto.lessonId } } } : {}),
         ...(mediaAssetId
           ? { mediaAsset: { connect: { id: mediaAssetId } } }
           : {}),
@@ -254,12 +250,11 @@ export class ResourcesService {
         resource.kind === ResourceKind.video
           ? drmConfigured
             ? {
-                scheme: media!.drmScheme,
-                contentId: media!.drmContentId,
-                licenseUrl: media!.licenseServiceUrl,
+                scheme: media.drmScheme,
+                contentId: media.drmContentId,
+                licenseUrl: media.licenseServiceUrl,
                 offlineAllowed: true,
-                offlinePeriodSeconds:
-                  media!.offlinePeriodSeconds ?? offlineTtl,
+                offlinePeriodSeconds: media.offlinePeriodSeconds ?? offlineTtl,
                 status: 'ready',
               }
             : {
