@@ -21,6 +21,8 @@ Implements Phase 0–1 of [`docs/WEB_ADMIN_PANEL_REQUIREMENTS.md`](docs/WEB_ADMI
 | `docs/api/openapi-draft.md` | Admin + learner API surface |
 | `docs/backend-handoff.md` | Learner protected-download API handoff |
 | `docs/protected-downloads.md` | API-side download/offline policy |
+| `docs/APP_DEVELOPER_HANDOVER.md` | Learner app developer handover: endpoints + sample data |
+| `docs/DEPLOY_RAILWAY.md` | Railway deployment and CI/CD |
 
 ## Setup
 

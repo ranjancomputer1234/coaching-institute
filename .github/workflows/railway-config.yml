@@ -1,0 +1,70 @@
+name: Railway config
+
+# Plans .railway/railway.ts on pull requests and applies the reviewed plan on merge.
+# Needs a Railway project token for the production environment in the
+# RAILWAY_TOKEN repository secret. Without it, both jobs skip.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - ".railway/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+  id-token: write
+
+jobs:
+  plan:
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.RAILWAY_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
+      - uses: pnpm/action-setup@v4
+        if: env.HAS_TOKEN == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_TOKEN == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: env.HAS_TOKEN == 'true'
+      - uses: railwayapp/config@v1
+        if: env.HAS_TOKEN == 'true'
+        with:
+          command: plan
+          railway-token: ${{ secrets.RAILWAY_TOKEN }}
+      - if: env.HAS_TOKEN != 'true'
+        run: echo "RAILWAY_TOKEN is not set; skipping Railway plan."
+
+  apply:
+    if: github.event.action == 'closed' && github.event.pull_request.merged && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.RAILWAY_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HAS_TOKEN == 'true'
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+      - uses: pnpm/action-setup@v4
+        if: env.HAS_TOKEN == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_TOKEN == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: env.HAS_TOKEN == 'true'
+      - uses: railwayapp/config@v1
+        if: env.HAS_TOKEN == 'true'
+        with:
+          command: apply
+          railway-token: ${{ secrets.RAILWAY_TOKEN }}
+      - if: env.HAS_TOKEN != 'true'
+        run: echo "RAILWAY_TOKEN is not set; skipping Railway apply."

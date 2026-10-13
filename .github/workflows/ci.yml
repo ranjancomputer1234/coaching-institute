@@ -1,0 +1,154 @@
+name: CI
+
+# Railway waits for this workflow to pass on main before deploying
+# (checkSuites in .railway/railway.ts), so every job here gates production.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    name: API (lint, unit, e2e, smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: redi
+          POSTGRES_PASSWORD: redi_ci
+          POSTGRES_DB: redi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U redi -d redi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      APP_ENV: ci
+      PORT: 3333
+      DATABASE_URL: postgresql://redi:redi_ci@localhost:5432/redi?schema=public
+      JWT_SECRET: ci-admin-jwt-secret-not-for-production
+      LEARNER_JWT_SECRET: ci-learner-jwt-secret-not-for-production
+      OFFLINE_GRANT_SECRET: ci-offline-grant-secret-not-for-production
+      CORS_ORIGIN: http://localhost:5173
+      PROTECTED_CONTENT_BASE_URL: http://localhost:3333/api/protected/delivery
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: pnpm prisma:generate
+      - name: Lint
+        working-directory: apps/api
+        run: pnpm lint:check
+      - name: Unit tests
+        working-directory: apps/api
+        run: pnpm test
+      - name: Build
+        working-directory: apps/api
+        run: pnpm build
+
+      - name: Migrate and seed
+        working-directory: apps/api
+        run: |
+          pnpm prisma:migrate
+          pnpm prisma:seed
+      - name: E2E tests
+        working-directory: apps/api
+        run: pnpm test:e2e
+
+      - name: Start API
+        working-directory: apps/api
+        run: |
+          nohup node dist/src/main > api.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:3333/api/health && exit 0
+            sleep 2
+          done
+          echo "API did not become healthy" >&2
+          cat api.log
+          exit 1
+      - name: Smoke test every endpoint
+        working-directory: apps/api
+        run: pnpm smoke
+      - name: API log
+        if: failure()
+        working-directory: apps/api
+        run: cat api.log || true
+
+  admin:
+    name: Admin (lint, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm --filter admin lint
+      - name: Build
+        env:
+          VITE_API_BASE_URL: https://api.example.com
+          VITE_APP_ENV: production
+        run: pnpm --filter admin build
+
+  docker:
+    name: Docker image (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, admin]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the same image Railway builds
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: false
+          load: true
+          tags: redi-${{ matrix.app }}:ci
+          build-args: |
+            VITE_API_BASE_URL=https://api.example.com
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+      - name: Admin container serves the SPA
+        if: matrix.app == 'admin'
+        run: |
+          docker run -d --name admin -e PORT=8080 -p 8080:8080 redi-admin:ci
+          for i in $(seq 1 15); do
+            curl -fsS http://localhost:8080/healthz && break
+            sleep 1
+          done
+          curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
+          curl -fsS http://localhost:8080/learners | grep -q '<div id="root">'
+      - name: API image contains the build and Prisma CLI
+        if: matrix.app == 'api'
+        run: |
+          docker run --rm redi-api:ci test -f dist/src/main.js
+          docker run --rm redi-api:ci npx prisma --version
