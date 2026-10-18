@@ -112,8 +112,41 @@ To run the full endpoint smoke test against a deployed API (it creates test reco
 API_URL=https://<api-domain>/api pnpm smoke
 ```
 
-## Video: what is and isn't deployed
+## Video: Mux (admin upload + signed HLS streaming)
 
-There is **no video upload or processing pipeline yet**. The admin "Lessons & resources" screen only saves resource metadata (title, kind, storage key). The API has no file upload endpoint, no object storage client, and no transcoding/HLS packaging. `/api/protected/delivery` returns `metadata_only_until_storage_wired`. Video DRM licences are issued only for resources with `drmScheme`, `drmContentId` and `licenseServiceUrl` configured.
+Lesson videos are hosted by **Mux**, not on Railway and not in S3/R2. The admin
+"Lessons & resources" screen uploads the file directly from the browser to Mux
+(the API only creates the one-shot upload URL and records the asset), Mux
+transcodes it to adaptive HLS, and playback uses short-lived signed URLs
+(`stream.mux.com/<playbackId>.m3u8?token=…`, 1 hour). Railway volumes are never
+used for video files.
 
-Railway volumes are not a good fit for video files. When this is built, use object storage (S3, Cloudflare R2 or similar) with direct-to-bucket signed uploads, plus a managed transcoding/DRM provider (e.g. Mux, Cloudflare Stream, or AWS MediaConvert with a DRM vendor).
+Set these on the `api` service only (never in the admin app, never `VITE_`):
+
+| Variable | Where to get it |
+| -------- | --------------- |
+| `MUX_TOKEN_ID` / `MUX_TOKEN_SECRET` | mux.com → Dashboard → Settings → API Access Tokens → Generate (Mux Video read/write) |
+| `MUX_SIGNING_KEY_ID` / `MUX_SIGNING_KEY_PRIVATE_KEY` | mux.com → Dashboard → Settings → Signing Keys → Generate. Store the private key as base64 PEM on one line. |
+
+Without them, video upload/playback returns `VIDEO_PROVIDER_NOT_CONFIGURED` /
+`VIDEO_SIGNING_NOT_CONFIGURED` and nothing falls back to a public URL. Status is
+polled (`GET /admin/resources/:id/video-status`); a Mux webhook is not required.
+Widevine/FairPlay DRM is still a separate provider configuration — signed HLS
+is access control, not DRM.
+
+### Backup provider: Cloudinary
+
+If Mux is not configured (or its upload-slot request fails), uploads
+automatically fall back to Cloudinary (`VIDEO_PROVIDER=auto`, the default;
+force one provider with `VIDEO_PROVIDER=mux` or `=cloudinary`). Videos already
+uploaded keep playing from whichever provider they were uploaded to — the
+provider is stored per video, so the backup only affects new uploads.
+
+| Variable | Where to get it |
+| -------- | --------------- |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | cloudinary.com → Dashboard (API environment details) or Settings → API Keys |
+| `CLOUDINARY_FOLDER` | Optional, defaults to `redi/videos` |
+
+Backup playback is an unlisted Cloudinary HLS/MP4 delivery URL (random
+`public_id`), **not** signed like Mux and not DRM — treat Cloudinary as a
+continuity/backup path and keep Mux primary for paid content.

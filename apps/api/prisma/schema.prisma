@@ -692,11 +692,17 @@ model MediaAsset {
   byteSize        Int?
   checksumSha256  String?
   encryptionAlgo  String? // e.g. aes-256-gcm container hint for mobile
-  packagingFormat String? // e.g. encrypted_pdf, dash_cenc, hls_fps
+  packagingFormat String? // e.g. encrypted_pdf, dash_cenc, hls_fps, mux_hls
   drmScheme       DrmScheme  @default(none)
   drmContentId    String?
   licenseServiceUrl String?
   offlinePeriodSeconds Int?
+  // Managed video provider (e.g. "mux"). Null for plain storage-key assets.
+  provider          String?
+  providerUploadId  String? @unique
+  providerAssetId   String? @unique
+  providerPlaybackId String? @unique
+  providerStatus    String? // waiting | asset_created | preparing | ready | errored
   lifecycle       ContentLifecycle @default(draft)
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt

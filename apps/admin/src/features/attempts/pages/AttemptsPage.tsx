@@ -1,8 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { apiFetch } from '../../../shared/api/client';
 import { useAuth } from '../../../shared/auth/AuthContext';
+import {
+  distinctOptions,
+  filterByDateRange,
+  filterBySearch,
+  filterWhen,
+} from '../../../shared/lib/tableFilters';
+import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
+import { PageHeaderActions } from '../../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
+import { TableFilterBar } from '../../../shared/ui/TableFilterBar';
 
 type Attempt = {
   id: string;
@@ -28,8 +37,13 @@ type Learner = { id: string; firstName: string; lastName: string };
 export function AttemptsPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [testId, setTestId] = useState('');
   const [learnerId, setLearnerId] = useState('');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const list = useQuery({
     queryKey: ['attempts'],
@@ -51,6 +65,7 @@ export function AttemptsPage() {
         body: JSON.stringify({ testId, learnerId }),
       }),
     onSuccess: () => {
+      setDrawerOpen(false);
       queryClient.invalidateQueries({ queryKey: ['attempts'] });
     },
   });
@@ -64,6 +79,25 @@ export function AttemptsPage() {
     },
   });
 
+  const rows = list.data ?? [];
+  const filtered = useMemo(() => {
+    let next = rows;
+    next = filterBySearch(
+      next,
+      search,
+      (a) =>
+        `${a.learner.firstName} ${a.learner.lastName} ${a.test.title} ${a.status}`,
+    );
+    next = filterWhen(next, status, (a, v) => a.status === v);
+    next = filterByDateRange(next, dateFrom, dateTo, (a) => a.startedAt);
+    return next;
+  }, [rows, search, status, dateFrom, dateTo]);
+
+  const statusOptions = useMemo(
+    () => distinctOptions(rows.map((a) => a.status)),
+    [rows],
+  );
+
   return (
     <section>
       <div className="page-header">
@@ -71,11 +105,107 @@ export function AttemptsPage() {
           <h1>Attempts</h1>
           <p>Inspect and operate on test attempts</p>
         </div>
+        {hasPermission('assessments.author') ? (
+          <PageHeaderActions>
+            <button type="button" className="btn" onClick={() => setDrawerOpen(true)}>
+              Start attempt
+            </button>
+          </PageHeaderActions>
+        ) : null}
       </div>
 
-      {hasPermission('assessments.author') ? (
+      <PageState
+        loading={list.isLoading}
+        error={list.error instanceof Error ? list.error : null}
+        empty={!list.isLoading && rows.length === 0}
+        emptyTitle="No attempts"
+      >
+        <TableFilterBar
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: 'Search learner or test…',
+          }}
+          dateFrom={{ value: dateFrom, onChange: setDateFrom, label: 'Started from' }}
+          dateTo={{ value: dateTo, onChange: setDateTo, label: 'Started to' }}
+          selects={[
+            {
+              id: 'status',
+              label: 'Status',
+              value: status,
+              onChange: setStatus,
+              options: statusOptions,
+            },
+          ]}
+          onReset={() => {
+            setSearch('');
+            setStatus('');
+            setDateFrom('');
+            setDateTo('');
+          }}
+        />
+        <div className="panel">
+          <table>
+            <thead>
+              <tr>
+                <th>Learner</th>
+                <th>Test</th>
+                <th>Status</th>
+                <th>Started</th>
+                <th>Score</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="muted">
+                    No rows match filters.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((a) => (
+                  <tr key={a.id}>
+                    <td>
+                      {a.learner.firstName} {a.learner.lastName}
+                    </td>
+                    <td>{a.test.title}</td>
+                    <td>
+                      <StatusPill value={a.status} />
+                    </td>
+                    <td>{new Date(a.startedAt).toLocaleDateString()}</td>
+                    <td>
+                      {a.result
+                        ? `${a.result.rawScore}/${a.result.maxScore} (${a.result.percentage.toFixed(0)}%)`
+                        : '—'}
+                    </td>
+                    <td>
+                      {a.status === 'in_progress' || a.status === 'created' ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => submit.mutate(a.id)}
+                        >
+                          Force submit & score
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </PageState>
+
+      <ContentDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title="Start attempt"
+        size="full"
+      >
         <form
-          className="inline-form panel padded"
+          className="stack-form"
           onSubmit={(e) => {
             e.preventDefault();
             create.mutate();
@@ -122,57 +252,7 @@ export function AttemptsPage() {
             <p className="error">{create.error.message}</p>
           ) : null}
         </form>
-      ) : null}
-
-      <PageState
-        loading={list.isLoading}
-        error={list.error instanceof Error ? list.error : null}
-        empty={!list.isLoading && (list.data?.length ?? 0) === 0}
-        emptyTitle="No attempts"
-      >
-        <div className="panel">
-          <table>
-            <thead>
-              <tr>
-                <th>Learner</th>
-                <th>Test</th>
-                <th>Status</th>
-                <th>Score</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(list.data ?? []).map((a) => (
-                <tr key={a.id}>
-                  <td>
-                    {a.learner.firstName} {a.learner.lastName}
-                  </td>
-                  <td>{a.test.title}</td>
-                  <td>
-                    <StatusPill value={a.status} />
-                  </td>
-                  <td>
-                    {a.result
-                      ? `${a.result.rawScore}/${a.result.maxScore} (${a.result.percentage.toFixed(0)}%)`
-                      : '—'}
-                  </td>
-                  <td>
-                    {a.status === 'in_progress' || a.status === 'created' ? (
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => submit.mutate(a.id)}
-                      >
-                        Force submit & score
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </PageState>
+      </ContentDrawer>
     </section>
   );
 }

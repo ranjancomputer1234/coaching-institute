@@ -43,6 +43,14 @@ export class PlatformService {
       push: Boolean(this.config.get('PUSH_PROVIDER_KEY')),
       payments: Boolean(this.config.get('PAYMENT_PROVIDER_KEY')),
       storage: Boolean(this.config.get('OBJECT_STORAGE_BUCKET')),
+      video: Boolean(
+        this.config.get('MUX_TOKEN_ID') && this.config.get('MUX_TOKEN_SECRET'),
+      ),
+      videoBackup: Boolean(
+        this.config.get('CLOUDINARY_CLOUD_NAME') &&
+        this.config.get('CLOUDINARY_API_KEY') &&
+        this.config.get('CLOUDINARY_API_SECRET'),
+      ),
       mfa: false,
     };
   }

@@ -38,6 +38,12 @@ export class LearnersController {
     return this.learnersService.findAll(q);
   }
 
+  @Get(':id/activity')
+  @RequirePermissions('users.read')
+  activity(@Param('id') id: string) {
+    return this.learnersService.getActivity(id);
+  }
+
   @Get(':id')
   @RequirePermissions('users.read')
   findOne(@Param('id') id: string) {

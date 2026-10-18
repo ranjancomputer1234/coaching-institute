@@ -10,6 +10,7 @@ import {
 import { ResourcesService } from './resources.service';
 import {
   CreateResourceDto,
+  CreateVideoUploadDto,
   DownloadAuthorizationDto,
 } from './dto/resource.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -42,6 +43,30 @@ export class ResourcesController {
   @RequirePermissions('content.create')
   create(@Body() dto: CreateResourceDto, @CurrentUser() user: AdminActor) {
     return this.resources.create(dto, user);
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Post('admin/resources/video-uploads')
+  @RequirePermissions('content.create')
+  createVideoUpload(
+    @Body() dto: CreateVideoUploadDto,
+    @CurrentUser() user: AdminActor,
+  ) {
+    return this.resources.createVideoUpload(dto, user);
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Get('admin/resources/:id/video-status')
+  @RequirePermissions('content.edit')
+  videoStatus(@Param('id') id: string) {
+    return this.resources.refreshVideoStatus(id);
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Get('admin/resources/:id/video-playback')
+  @RequirePermissions('content.edit')
+  videoPlayback(@Param('id') id: string) {
+    return this.resources.adminVideoPlayback(id);
   }
 
   @UseGuards(LearnerJwtAuthGuard)

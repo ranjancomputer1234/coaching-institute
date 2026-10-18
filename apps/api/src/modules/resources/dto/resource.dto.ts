@@ -79,6 +79,34 @@ export class CreateResourceDto {
   previewAllowed?: boolean;
 }
 
+/** Admin asks the API for a Mux direct-upload URL, then PUTs the file straight to Mux. */
+export class CreateVideoUploadDto {
+  @IsString()
+  @MinLength(1)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  fileName?: string;
+
+  @IsOptional()
+  @IsString()
+  mimeType?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  byteSize?: number;
+
+  @IsOptional()
+  @IsString()
+  courseId?: string;
+
+  @IsOptional()
+  @IsString()
+  lessonId?: string;
+}
+
 export class DownloadAuthorizationDto {
   @IsOptional()
   @IsString()

@@ -1,8 +1,10 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   AuditSeverity,
   ContentLifecycle,
@@ -15,8 +17,12 @@ import { AuditService } from '../audit/audit.service';
 import { ContentAccessService } from '../content-access/content-access.service';
 import {
   CreateResourceDto,
+  CreateVideoUploadDto,
   DownloadAuthorizationDto,
 } from './dto/resource.dto';
+import { MuxService } from './mux.service';
+import { CloudinaryService } from './cloudinary.service';
+import { randomUUID } from 'node:crypto';
 
 type AdminActor = { userId: string; email?: string };
 
@@ -26,6 +32,9 @@ export class ResourcesService {
     private readonly prisma: PrismaService,
     private readonly access: ContentAccessService,
     private readonly audit: AuditService,
+    private readonly mux: MuxService,
+    private readonly cloudinary: CloudinaryService,
+    private readonly config: ConfigService,
   ) {}
 
   findAllAdmin() {
@@ -88,6 +97,337 @@ export class ResourcesService {
       after: { title: resource.title, kind: resource.kind },
     });
     return resource;
+  }
+
+  /**
+   * Video upload, step 1: create a draft resource + a direct-upload slot.
+   * Primary provider is Mux; Cloudinary is the automatic backup
+   * (VIDEO_PROVIDER=auto|mux|cloudinary, default auto). The browser sends
+   * the file directly to the provider — never through this API — and polls
+   * `refreshVideoStatus` until transcoding finishes.
+   */
+  async createVideoUpload(dto: CreateVideoUploadDto, actor: AdminActor) {
+    const preference = (
+      this.config.get<string>('VIDEO_PROVIDER') ?? 'auto'
+    ).toLowerCase();
+    const corsOrigin = (
+      this.config.get<string>('CORS_ORIGIN') ?? 'http://localhost:5173'
+    )
+      .split(',')[0]
+      .trim();
+
+    const tryMux = async () => {
+      const upload = await this.mux.createDirectUpload(corsOrigin);
+      const resource = await this.createDraftVideoResource(dto, {
+        storageKey: `mux:upload:${upload.id}`,
+        packagingFormat: 'mux_hls',
+        provider: 'mux',
+        providerUploadId: upload.id,
+      });
+      return {
+        resource,
+        response: {
+          resourceId: resource.id,
+          provider: 'mux' as const,
+          uploadId: upload.id,
+          uploadUrl: upload.url,
+          uploadMethod: 'PUT' as const,
+          formFields: null,
+          status: 'waiting',
+        },
+      };
+    };
+
+    const tryCloudinary = async () => {
+      const signed = this.cloudinary.createSignedUpload(
+        `v_${randomUUID().replace(/-/g, '')}`,
+      );
+      const resource = await this.createDraftVideoResource(dto, {
+        storageKey: `cloudinary:${signed.publicId}`,
+        packagingFormat: 'cloudinary_hls',
+        provider: 'cloudinary',
+        providerUploadId: signed.publicId,
+      });
+      return {
+        resource,
+        response: {
+          resourceId: resource.id,
+          provider: 'cloudinary' as const,
+          uploadId: signed.publicId,
+          uploadUrl: signed.uploadUrl,
+          uploadMethod: 'POST_FORM' as const,
+          formFields: signed.formFields,
+          status: 'waiting',
+        },
+      };
+    };
+
+    let attempt: Awaited<ReturnType<typeof tryMux | typeof tryCloudinary>>;
+    if (preference === 'cloudinary') {
+      attempt = await tryCloudinary();
+    } else if (preference === 'mux') {
+      attempt = await tryMux();
+    } else if (this.mux.isConfigured()) {
+      try {
+        attempt = await tryMux();
+      } catch (error) {
+        if (!this.cloudinary.isConfigured()) throw error;
+        attempt = await tryCloudinary(); // Mux down/unreachable → backup
+      }
+    } else if (this.cloudinary.isConfigured()) {
+      attempt = await tryCloudinary();
+    } else {
+      // Neither configured: calling Mux throws the beginner-friendly
+      // VIDEO_PROVIDER_NOT_CONFIGURED error with setup instructions.
+      attempt = await tryMux();
+    }
+
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'resource.video_upload.create',
+      resourceType: 'Resource',
+      resourceId: attempt.resource.id,
+      after: {
+        title: attempt.resource.title,
+        provider: attempt.response.provider,
+        uploadId: attempt.response.uploadId,
+      },
+    });
+    return {
+      ...attempt.response,
+      next: 'Send the video file to uploadUrl, then poll GET /admin/resources/:id/video-status',
+    };
+  }
+
+  private async createDraftVideoResource(
+    dto: CreateVideoUploadDto,
+    asset: {
+      storageKey: string;
+      packagingFormat: string;
+      provider: string;
+      providerUploadId: string;
+    },
+  ) {
+    const media = await this.prisma.mediaAsset.create({
+      data: {
+        ...asset,
+        mimeType: dto.mimeType ?? 'video/mp4',
+        byteSize: dto.byteSize,
+        providerStatus: 'waiting',
+        lifecycle: ContentLifecycle.draft,
+      },
+    });
+    return this.prisma.resource.create({
+      data: {
+        title: dto.title,
+        kind: ResourceKind.video,
+        mimeType: dto.mimeType ?? 'video/mp4',
+        byteSize: dto.byteSize,
+        ...(dto.courseId ? { course: { connect: { id: dto.courseId } } } : {}),
+        ...(dto.lessonId ? { lesson: { connect: { id: dto.lessonId } } } : {}),
+        mediaAsset: { connect: { id: media.id } },
+        downloadable: false,
+        previewAllowed: false,
+        lifecycle: ContentLifecycle.draft,
+      },
+      include: { mediaAsset: true },
+    });
+  }
+
+  /** Video upload, step 2 (poll): ask Mux how far transcoding got and mirror it locally. */
+  async refreshVideoStatus(resourceId: string) {
+    const resource = await this.prisma.resource.findUnique({
+      where: { id: resourceId },
+      include: { mediaAsset: true },
+    });
+    if (
+      !resource?.mediaAsset?.providerUploadId &&
+      !resource?.mediaAsset?.providerAssetId
+    ) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: `Video resource ${resourceId} not found`,
+        fieldErrors: {},
+      });
+    }
+    const media = resource.mediaAsset;
+    if (media.providerStatus === 'ready' && media.providerPlaybackId) {
+      return {
+        resourceId,
+        provider: media.provider ?? 'mux',
+        status: 'ready',
+        assetId: media.providerAssetId,
+        playbackId: media.providerPlaybackId,
+      };
+    }
+
+    if (media.provider === 'cloudinary') {
+      const publicId = media.providerUploadId ?? media.providerAssetId;
+      const found = publicId
+        ? await this.cloudinary.getResource(publicId)
+        : null;
+      if (!found) {
+        return {
+          resourceId,
+          provider: 'cloudinary',
+          status: 'preparing',
+          assetId: null,
+          playbackId: null,
+        };
+      }
+      await this.prisma.mediaAsset.update({
+        where: { id: media.id },
+        data: {
+          providerStatus: 'ready',
+          providerAssetId: found.public_id,
+          providerPlaybackId: found.public_id,
+          byteSize: found.bytes ?? media.byteSize,
+          lifecycle: ContentLifecycle.published,
+        },
+      });
+      await this.prisma.resource.update({
+        where: { id: resourceId },
+        data: {
+          lifecycle: ContentLifecycle.published,
+          publishedAt: new Date(),
+        },
+      });
+      return {
+        resourceId,
+        provider: 'cloudinary',
+        status: 'ready',
+        assetId: found.public_id,
+        playbackId: found.public_id,
+      };
+    }
+
+    let assetId = media.providerAssetId;
+    if (!assetId && media.providerUploadId) {
+      const upload = await this.mux.getUpload(media.providerUploadId);
+      assetId = upload.asset_id ?? null;
+      if (!assetId) {
+        return {
+          resourceId,
+          status: media.providerStatus ?? 'waiting',
+          assetId: null,
+          playbackId: null,
+        };
+      }
+      await this.prisma.mediaAsset.update({
+        where: { id: media.id },
+        data: {
+          providerAssetId: assetId,
+          providerStatus: 'asset_created',
+          storageKey: `mux:asset:${assetId}`,
+        },
+      });
+    }
+
+    const asset = await this.mux.getAsset(assetId!);
+    const playbackId = asset.playback_ids?.[0]?.id ?? null;
+    const status =
+      asset.status === 'ready' && playbackId
+        ? 'ready'
+        : asset.status === 'errored'
+          ? 'errored'
+          : 'preparing';
+
+    await this.prisma.mediaAsset.update({
+      where: { id: media.id },
+      data: {
+        providerStatus: status,
+        providerPlaybackId: playbackId,
+        lifecycle:
+          status === 'ready' ? ContentLifecycle.published : media.lifecycle,
+      },
+    });
+    if (status === 'ready') {
+      await this.prisma.resource.update({
+        where: { id: resourceId },
+        data: {
+          lifecycle: ContentLifecycle.published,
+          publishedAt: new Date(),
+        },
+      });
+    }
+    return {
+      resourceId,
+      status,
+      assetId,
+      playbackId,
+      error:
+        status === 'errored'
+          ? (asset.errors?.messages ?? []).join(', ') ||
+            'Mux could not process this file'
+          : null,
+    };
+  }
+
+  /** Admin "test streaming" preview: a 1-hour signed HLS URL for the in-browser player. */
+  async adminVideoPlayback(resourceId: string) {
+    const current = await this.refreshVideoStatus(resourceId);
+    if (current.status !== 'ready' || !current.playbackId) {
+      throw new BadRequestException({
+        code: 'VIDEO_NOT_READY',
+        message: `Video is not ready yet (status: ${current.status}). Wait a few seconds and check again.`,
+        fieldErrors: {},
+      });
+    }
+    if (current.provider === 'cloudinary') {
+      return {
+        resourceId,
+        provider: 'cloudinary',
+        status: 'ready',
+        playbackId: current.playbackId,
+        playbackUrl: this.cloudinary.playbackUrl(current.playbackId),
+        fallbackUrl: this.cloudinary.fallbackMp4Url(current.playbackId),
+        expiresInSeconds: null,
+      };
+    }
+    return {
+      resourceId,
+      provider: 'mux',
+      status: 'ready',
+      playbackId: current.playbackId,
+      playbackUrl: this.mux.signedPlaybackUrl(current.playbackId),
+      fallbackUrl: null,
+      expiresInSeconds: 3600,
+    };
+  }
+
+  /** Learner playback for a ready provider video, or null when not playable yet. */
+  private learnerPlayback(resource: {
+    kind: ResourceKind;
+    mediaAsset: {
+      provider?: string | null;
+      providerStatus?: string | null;
+      providerPlaybackId?: string | null;
+    } | null;
+  }): { type: string; url: string; expiresInSeconds: number | null } | null {
+    const media = resource.mediaAsset;
+    if (
+      resource.kind !== ResourceKind.video ||
+      media?.providerStatus !== 'ready' ||
+      !media?.providerPlaybackId
+    ) {
+      return null;
+    }
+    if (media.provider === 'cloudinary') {
+      return {
+        type: 'cloudinary_hls',
+        url: this.cloudinary.playbackUrl(media.providerPlaybackId),
+        expiresInSeconds: null,
+      };
+    }
+    if (media.provider === 'mux' && this.mux.isSigningConfigured()) {
+      return {
+        type: 'mux_hls',
+        url: this.mux.signedPlaybackUrl(media.providerPlaybackId),
+        expiresInSeconds: 3600,
+      };
+    }
+    return null;
   }
 
   async authorizeDownload(
@@ -218,6 +558,19 @@ export class ResourcesService {
         expiresAt: access.expiresAt,
         source: access.source,
       },
+      playback:
+        resource.kind === ResourceKind.video
+          ? (() => {
+              const playback = this.learnerPlayback(resource);
+              return playback
+                ? playback
+                : {
+                    type: 'video_hls',
+                    url: null,
+                    status: 'not_ready_or_signing_not_configured',
+                  };
+            })()
+          : null,
       delivery: {
         method: 'https',
         url: this.access.buildDeliveryUrl(resource.id, deliveryToken),
