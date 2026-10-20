@@ -21,10 +21,10 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL \
 RUN test -n "$VITE_API_BASE_URL" || (echo "VITE_API_BASE_URL is required to build the admin panel" >&2 && exit 1)
 RUN pnpm --filter admin build
 
-FROM nginx:1.27-alpine
+FROM node:22-bookworm-slim
+WORKDIR /srv
 ENV PORT=8080
-# Only substitute PORT. Otherwise envsubst can rewrite nginx vars like $uri.
-ENV NGINX_ENVSUBST_FILTER=^PORT$
-COPY apps/admin/nginx.conf.template /etc/nginx/templates/default.conf.template
-COPY --from=build /app/apps/admin/dist /usr/share/nginx/html
+COPY apps/admin/serve.mjs ./serve.mjs
+COPY --from=build /app/apps/admin/dist ./dist
 EXPOSE 8080
+CMD ["node", "serve.mjs"]
