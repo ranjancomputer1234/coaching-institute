@@ -1,6 +1,7 @@
 server {
+    # IPv4 only. Railway containers do not support IPv6; `listen [::]`
+    # makes nginx exit, and the edge then returns 503.
     listen ${PORT};
-    listen [::]:${PORT};
     server_name _;
 
     root /usr/share/nginx/html;

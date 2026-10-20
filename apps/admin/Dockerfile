@@ -23,6 +23,8 @@ RUN pnpm --filter admin build
 
 FROM nginx:1.27-alpine
 ENV PORT=8080
+# Only substitute PORT. Otherwise envsubst can rewrite nginx vars like $uri.
+ENV NGINX_ENVSUBST_FILTER=^PORT$
 COPY apps/admin/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/apps/admin/dist /usr/share/nginx/html
 EXPOSE 8080
