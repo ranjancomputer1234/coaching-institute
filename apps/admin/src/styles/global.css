@@ -543,6 +543,83 @@ tbody tr {
   max-width: none;
 }
 
+.searchable-multi-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  padding: 0.75rem;
+}
+
+.searchable-multi-select-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.searchable-multi-select-toolbar .field {
+  margin: 0;
+}
+
+.searchable-multi-select-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.searchable-multi-select-list {
+  max-height: min(420px, 55vh);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: color-mix(in srgb, var(--bg) 55%, var(--surface));
+}
+
+.searchable-multi-select-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  cursor: pointer;
+}
+
+.searchable-multi-select-row:last-child {
+  border-bottom: none;
+}
+
+.searchable-multi-select-row:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.searchable-multi-select-row.is-selected {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.searchable-multi-select-row input {
+  margin-top: 0.2rem;
+}
+
+.searchable-multi-select-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.searchable-multi-select-copy strong {
+  font-weight: 600;
+}
+
+.searchable-multi-select .padded {
+  padding: 1rem;
+}
+
 .action-row {
   display: flex;
   flex-wrap: wrap;

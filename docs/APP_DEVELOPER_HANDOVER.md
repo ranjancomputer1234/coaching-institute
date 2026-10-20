@@ -1,14 +1,19 @@
-# REDI learner app — API handover
+# REDI learner app — final API handover
 
-Handover for the mobile / learner app. Every path below is implemented in `apps/api` and is prefixed with `/api`.
+Final contract for the React Native learner app (`com.rediapp.learner`). Every path below is implemented in `apps/api` and is prefixed with `/api`.
 
 Admin panel routes (`/api/admin/...`) are a separate product. They use a different login and JWT. Do not call them from the learner app.
+
+This document is the app contract. Sample ids such as `crs_tally` are placeholders. Real ids are cuid values returned by the API. Look up seed content by the stable keys in [Seed accounts](#seed-accounts-local).
 
 ## Base URL and headers
 
 | Environment | Base URL |
 |---|---|
 | Local | `http://localhost:3333/api` |
+| Production | `https://<api-railway-domain>/api` |
+
+The production host is the Railway `api` public domain. There is no separate path prefix beyond `/api`. `GET /api/health` returns the process health check and does not require a token. Native apps are not subject to browser CORS.
 
 ```http
 Content-Type: application/json
@@ -31,7 +36,19 @@ After `prisma db seed` in `apps/api`:
 | `riya@learner.local` | `learner123` | Enrolled in Tally Prime Basics, has an admit card and a course entitlement |
 | `arjun@learner.local` | `learner123` | Active learner, no seeded entitlement |
 
-Seed also prints the PDF resource id, video resource id, and related ids. Use those real ids in place of the placeholders below (`crs_tally`, `lsn_start`, `res_pdf`, `res_video`, `doc_admit`).
+Stable seed keys (ids themselves are generated):
+
+| Thing | Lookup |
+|---|---|
+| Course | slug `tally-prime-basics` |
+| Lesson | title `Getting started` on that course |
+| Batch | id `seed-batch-redi`, code `REDI-2026-A` |
+| Banner | id `seed-banner-welcome` |
+| PDF notes | title `Tally Getting Started Notes (PDF)` |
+| Seed video | title `Tally Getting Started Video` (no Mux/Cloudinary asset; playback is not ready) |
+| Admit card | serial `AC-SEED-001` |
+
+Seed prints the PDF resource id and video resource id. Use those real ids in place of the placeholders below (`crs_tally`, `lsn_start`, `res_pdf`, `res_video`, `doc_admit`).
 
 ## Errors
 
@@ -72,7 +89,8 @@ Validation errors (missing field, password shorter than 6, bad email) use Nest�
 4. Free courses, or paid courses with `access.granted`, call `POST /courses/:id/enroll`.
 5. List lessons, open a lesson, then `POST /lessons/:id/progress` and `POST /lessons/:id/complete`.
 6. Documents: `GET /me/documents`, then `GET /me/documents/:id`. Download only through `POST /resources/:id/download-authorization`.
-7. Play or save the short-lived `delivery.url`. Keep offline content only inside app-private storage, and re-check the signed grant with `GET /crypto/offline-verification`.
+7. Video: call the same download-authorization route with the lesson’s resource id. When `playback.type` is `mux_hls` or `cloudinary_hls`, play `playback.url` in an in-app HLS player. Do not use `delivery.url` as the video stream.
+8. PDFs: fetch `delivery.url` only as a short-lived session. Today that route returns metadata, not file bytes. Keep offline content only inside app-private storage.
 
 ---
 
@@ -749,6 +767,7 @@ Offline grant lifetimes: documents **7 days**, video **3 days** (server env can 
     },
     "exportForbidden": true
   },
+  "playback": null,
   "offlineAuthorization": {
     "grantId": "grn_001",
     "scope": {
@@ -785,6 +804,42 @@ Offline grant lifetimes: documents **7 days**, video **3 days** (server env can 
 `kind`: `pdf` | `video` | `audio` | `notes` | `other`.
 
 `signature` is HMAC-SHA256 (base64url) over `JSON.stringify(payload)` with the server secret for `kid`. The app receives the signature. It does not receive the secret.
+
+**Video playback** is a sibling of `delivery`. It is `null` for non-video resources.
+
+Ready Mux asset (signed HLS, URL expires in `expiresInSeconds`, default 3600):
+
+```json
+{
+  "type": "mux_hls",
+  "url": "https://stream.mux.com/<playbackId>.m3u8?token=<jwt>",
+  "expiresInSeconds": 3600
+}
+```
+
+Ready Cloudinary asset (unlisted HLS, no expiry):
+
+```json
+{
+  "type": "cloudinary_hls",
+  "url": "https://res.cloudinary.com/<cloud>/video/upload/sp_hd/<publicId>.m3u8",
+  "expiresInSeconds": null
+}
+```
+
+Video that is still processing, or Mux signing keys are missing:
+
+```json
+{
+  "type": "video_hls",
+  "url": null,
+  "status": "not_ready_or_signing_not_configured"
+}
+```
+
+Play `playback.url` inside the app with an HLS player (`expo-av`, `react-native-video`, or ExoPlayer / AVPlayer). Request a fresh authorization when the Mux URL expires. Do not cache the URL past `expiresInSeconds`. The seed video has no provider asset, so its `playback.url` is `null`.
+
+`GET /lessons/:id` does not include resource ids. `hasMedia` only means the lesson row has a `mediaUrl`. To authorize a file, the app needs the resource id from `GET /me/documents` (`resourceId`) or from a resource id the catalogue will attach to the lesson. Until lessons return their resources, use the ids printed by seed for local playback tests.
 
 **Video** (`kind: "video"`) sets `drm` instead of `null`. Seeded video has no Widevine/FairPlay ids yet:
 
@@ -884,8 +939,35 @@ Public. Confirms which key id and algorithm signed `offlineAuthorization`. The H
 
 ---
 
-## What the learner app does not call
+## What this build does not give the app
 
-Tests, attempts, results, projects, live classes, orders, coupons, notifications, and staff management are admin-only today (`/api/admin/...`). There is no learner exam or payment API in this build.
+These exist for staff under `/api/admin/...` only. There is no learner route for them. Do not call them with a learner token.
+
+| Area | Admin surface | App behaviour for now |
+|---|---|---|
+| Tests, questions, attempts, results | `/api/admin/tests`, `/questions`, `/attempts`, `/results` | No exam player, no score, no result screen |
+| Projects and semester reviews | `/api/admin/projects`, `/semesters`, `/semester-reviews` | No project upload, no semester unlock |
+| Live classes | `/api/admin/live-classes` | No join URL, no room token. A banner may still deep-link with `targetKind: "liveClass"`; show “not available” until a learner join API exists |
+| Editorial (news, facts, interviews) | `/api/admin/editorial` | No read API. Honour `targetKind` only as a route hint |
+| Orders, coupons, products, refunds | `/api/admin/orders` and related | No checkout. Paid access arrives later as an entitlement |
+| Notifications and support | `/api/admin/notifications`, `/support-cases` | No inbox, no device-token registration |
+| Batches | `/api/admin/batches` and `/api/batches` | Both require a staff token. `batchId` on `GET /me` is display-only |
 
 Staff login, if you ever need it for a debug tool, is `POST /api/admin/auth/login` with `{ "email": "admin@institute.local", "password": "admin123" }`. That token must not be sent to `/me`, `/home/me`, or download routes.
+
+## Deep links
+
+Banners and explore sections carry `targetKind` and `targetRef`. Route inside the app from that pair. Kinds the product already uses:
+
+`course`, `lesson`, `test`, `news`, `fact`, `topic`, `interviewQuestion`, `interviewCategory`, `liveClass`, `document`, `exam`, `section`, `catalog`.
+
+Only `course` and `lesson` have learner read APIs in this build. `targetRef` for a course or lesson is that record’s id. The seeded welcome banner uses `targetKind: "section"` and `targetRef: "computer-courses"` (an explore slug).
+
+## App rules that are part of the contract
+
+- Store the learner JWT in secure storage. Send it as `Authorization: Bearer`.
+- Discard it on logout. There is no refresh token and no server session blocklist.
+- Send `appVersion` with `PATCH /me` after login so staff can see the installed build.
+- Open PDFs and video only inside the app. No share sheet, print, “open with”, or public Downloads folder.
+- Re-authorize online before every open. A stored file without a still-valid `offlineAuthorization` must not play.
+- Do not ship `OFFLINE_GRANT_SECRET`, Mux keys, or Cloudinary secrets in the app. Playback URLs are minted by the API.

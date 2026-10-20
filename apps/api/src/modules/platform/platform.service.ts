@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { DailyService } from './daily.service';
 import {
   CreateCampaignDto,
   CreateCouponDto,
@@ -35,12 +36,15 @@ export class PlatformService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
+    private readonly daily: DailyService,
   ) {}
 
   providers() {
     return {
-      live: Boolean(this.config.get('LIVE_PROVIDER_BASE_URL')),
+      // Daily live rooms — requires API key (URL alone is not enough).
+      live: this.daily.isConfigured(),
       push: Boolean(this.config.get('PUSH_PROVIDER_KEY')),
+      email: Boolean(this.config.get('EMAIL_PROVIDER_KEY')),
       payments: Boolean(this.config.get('PAYMENT_PROVIDER_KEY')),
       storage: Boolean(this.config.get('OBJECT_STORAGE_BUCKET')),
       video: Boolean(
@@ -116,21 +120,86 @@ export class PlatformService {
   }
 
   listLiveClasses() {
-    return this.prisma.liveClass.findMany({ orderBy: { startsAt: 'asc' } });
+    return this.prisma.liveClass.findMany({
+      include: {
+        batch: { select: { id: true, name: true } },
+      },
+      orderBy: { startsAt: 'asc' },
+    });
+  }
+
+  private parseAudienceIds(json: string | null | undefined): string[] {
+    try {
+      const parsed = JSON.parse(json || '[]') as unknown;
+      return Array.isArray(parsed)
+        ? parsed.filter((x): x is string => typeof x === 'string')
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async resolveAudienceLearnerIds(live: {
+    batchId: string | null;
+    audienceLearnerIdsJson: string;
+  }): Promise<string[]> {
+    const explicit = this.parseAudienceIds(live.audienceLearnerIdsJson);
+    if (explicit.length) return [...new Set(explicit)];
+    if (!live.batchId) return [];
+    const members = await this.prisma.batchMembership.findMany({
+      where: { batchId: live.batchId },
+      select: { learnerId: true },
+    });
+    if (members.length) return members.map((m) => m.learnerId);
+    const primary = await this.prisma.learner.findMany({
+      where: { batchId: live.batchId },
+      select: { id: true },
+    });
+    return primary.map((l) => l.id);
   }
 
   async createLiveClass(dto: CreateLiveClassDto, actor: Actor) {
+    if (dto.batchId) {
+      const batch = await this.prisma.batch.findUnique({
+        where: { id: dto.batchId },
+        select: { id: true },
+      });
+      if (!batch) {
+        throw new BadRequestException({
+          code: 'INVALID_BATCH',
+          message: 'Batch not found',
+          fieldErrors: { batchId: 'Unknown batch' },
+        });
+      }
+    }
+    const learnerIds = [...new Set(dto.learnerIds ?? [])];
+    if (learnerIds.length) {
+      const found = await this.prisma.learner.count({
+        where: { id: { in: learnerIds } },
+      });
+      if (found !== learnerIds.length) {
+        throw new BadRequestException({
+          code: 'INVALID_LEARNERS',
+          message: 'One or more learners were not found',
+          fieldErrors: { learnerIds: 'Unknown learner id(s)' },
+        });
+      }
+    }
+
     const row = await this.prisma.liveClass.create({
       data: {
         title: dto.title,
         startsAt: new Date(dto.startsAt),
         endsAt: new Date(dto.endsAt),
         courseId: dto.courseId,
+        batchId: dto.batchId,
+        audienceLearnerIdsJson: JSON.stringify(learnerIds),
         hostName: dto.hostName,
         capacity: dto.capacity,
         status: LiveClassStatus.draft,
-        provider: 'unconfigured',
+        provider: this.daily.isConfigured() ? 'daily' : 'unconfigured',
       },
+      include: { batch: { select: { id: true, name: true } } },
     });
     await this.audit.write({
       actorId: actor.userId,
@@ -138,13 +207,20 @@ export class PlatformService {
       action: 'live.create',
       resourceType: 'LiveClass',
       resourceId: row.id,
-      after: { title: row.title },
+      after: {
+        title: row.title,
+        batchId: row.batchId,
+        audienceCount: learnerIds.length,
+      },
     });
     return row;
   }
 
   async scheduleLiveClass(id: string, actor: Actor) {
-    const existing = await this.prisma.liveClass.findUnique({ where: { id } });
+    const existing = await this.prisma.liveClass.findUnique({
+      where: { id },
+      include: { batch: { select: { id: true, name: true } } },
+    });
     if (!existing) {
       throw new NotFoundException({
         code: 'NOT_FOUND',
@@ -152,34 +228,136 @@ export class PlatformService {
         fieldErrors: {},
       });
     }
-    const configured = this.providers().live;
+
+    if (!this.daily.isConfigured()) {
+      const row = await this.prisma.liveClass.update({
+        where: { id },
+        data: {
+          status: LiveClassStatus.provider_unavailable,
+          provider: 'unconfigured',
+          joinUrl: null,
+          recordingStatus: 'not_available',
+        },
+        include: { batch: { select: { id: true, name: true } } },
+      });
+      await this.audit.write({
+        actorId: actor.userId,
+        actorDisplay: actor.email,
+        action: 'live.schedule',
+        resourceType: 'LiveClass',
+        resourceId: id,
+        outcome: 'capability_unavailable',
+        after: { status: row.status, provider: row.provider },
+        severity: AuditSeverity.notice,
+      });
+      return {
+        ...row,
+        capability: 'unavailable' as const,
+        audienceCount: 0,
+        notify: { push: false, email: false, queued: false },
+        message:
+          'Daily is not configured. Set DAILY_API_KEY in apps/api/.env (Daily → Developers), then restart the API.',
+      };
+    }
+
+    // Reuse existing room if already scheduled.
+    let joinUrl = existing.joinUrl;
+    let providerRoomId = existing.providerRoomId;
+    if (!joinUrl) {
+      const room = await this.daily.createRoom({
+        name: `redi-${id.slice(-10)}-${Date.now().toString(36)}`,
+        startsAt: existing.startsAt,
+        endsAt: existing.endsAt,
+        capacity: existing.capacity,
+      });
+      joinUrl = room.url;
+      providerRoomId = room.id || room.name;
+    }
+
+    const audienceIds = await this.resolveAudienceLearnerIds(existing);
+    const when = existing.startsAt.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+    });
+    const body = [
+      `Live class: ${existing.title}`,
+      `Starts: ${when}`,
+      joinUrl ? `Join: ${joinUrl}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const pushReady = this.providers().push;
+    const emailReady = this.providers().email;
+    const campaign = await this.prisma.notificationCampaign.create({
+      data: {
+        title: `Live: ${existing.title}`,
+        body,
+        audience: existing.batchId
+          ? 'batch'
+          : audienceIds.length
+            ? 'learners'
+            : 'manual',
+        audienceRef:
+          existing.batchId ??
+          (audienceIds.length ? audienceIds.join(',') : null),
+        status: pushReady || emailReady ? 'queued' : 'not_sent',
+        providerStatus:
+          pushReady || emailReady
+            ? 'configured_pending_adapter'
+            : 'not_configured',
+        failureReason:
+          pushReady || emailReady
+            ? null
+            : 'Push/email providers are not configured. Room was created; notifications were not delivered.',
+      },
+    });
+
     const row = await this.prisma.liveClass.update({
       where: { id },
-      data: configured
-        ? { status: LiveClassStatus.scheduled, provider: 'configured' }
-        : {
-            status: LiveClassStatus.provider_unavailable,
-            provider: 'unconfigured',
-            joinUrl: null,
-            recordingStatus: 'not_available',
-          },
+      data: {
+        status: LiveClassStatus.scheduled,
+        provider: 'daily',
+        joinUrl,
+        providerRoomId,
+        recordingStatus: 'not_available',
+        notifyCampaignId: campaign.id,
+      },
+      include: { batch: { select: { id: true, name: true } } },
     });
+
     await this.audit.write({
       actorId: actor.userId,
       actorDisplay: actor.email,
       action: 'live.schedule',
       resourceType: 'LiveClass',
       resourceId: id,
-      outcome: configured ? 'success' : 'capability_unavailable',
-      after: { status: row.status, provider: row.provider },
+      outcome: 'success',
+      after: {
+        status: row.status,
+        provider: row.provider,
+        joinUrl: row.joinUrl,
+        audienceCount: audienceIds.length,
+        notifyCampaignId: campaign.id,
+      },
       severity: AuditSeverity.notice,
     });
+
+    const notifyNote =
+      pushReady || emailReady
+        ? 'Notification campaign queued (delivery adapter still pending).'
+        : 'Set PUSH_PROVIDER_KEY / EMAIL_PROVIDER_KEY later to deliver app push and email.';
+
     return {
       ...row,
-      capability: configured ? 'ready' : 'unavailable',
-      message: configured
-        ? 'Provider is configured. Room creation still requires the adapter call.'
-        : 'Live video provider is not configured. The class stays a draft record and no join link was invented.',
+      capability: 'ready' as const,
+      audienceCount: audienceIds.length,
+      notify: {
+        push: pushReady,
+        email: emailReady,
+        queued: Boolean(pushReady || emailReady),
+        campaignId: campaign.id,
+      },
+      message: `Daily room ready. ${audienceIds.length} student(s) in audience. ${notifyNote}`,
     };
   }
 

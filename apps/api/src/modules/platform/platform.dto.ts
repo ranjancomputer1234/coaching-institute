@@ -1,4 +1,6 @@
 import {
+  ArrayUnique,
+  IsArray,
   IsBoolean,
   IsDateString,
   IsEnum,
@@ -45,6 +47,17 @@ export class CreateLiveClassDto {
   @IsOptional()
   @IsString()
   courseId?: string;
+
+  @IsOptional()
+  @IsString()
+  batchId?: string;
+
+  /** Custom subset of learners (searchable multi-select in admin). */
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  learnerIds?: string[];
 
   @IsOptional()
   @IsString()

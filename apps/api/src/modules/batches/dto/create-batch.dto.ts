@@ -1,9 +1,15 @@
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  ArrayUnique,
+  IsArray,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 
 export class CreateBatchDto {
   @IsString()
   @MinLength(1)
-  name: string;
+  name!: string;
 
   @IsOptional()
   @IsString()
@@ -16,4 +22,11 @@ export class CreateBatchDto {
   @IsOptional()
   @IsString()
   endDate?: string;
+
+  /** Optional custom roster — pick specific learners for this batch. */
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  learnerIds?: string[];
 }

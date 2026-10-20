@@ -158,9 +158,25 @@ async function main() {
   // —— Batches ——
   await call('GET', '/admin/batches', { token: at });
   await call('GET', '/batches', { token: at });
-  const batch = await call('POST', '/admin/batches', { token: at, body: { name: `Smoke batch ${run}`, subject: 'Tally', startDate: '2026-11-01' } });
+  const batch = await call('POST', '/admin/batches', {
+    token: at,
+    body: {
+      name: `Smoke batch ${run}`,
+      subject: 'Tally',
+      startDate: '2026-11-01',
+      learnerIds: [riya?.id, arjun?.id].filter(Boolean),
+    },
+  });
+  check(
+    'custom batch includes selected learners',
+    (batch?._count?.memberships ?? 0) >= 1 || (batch?.memberships?.length ?? 0) >= 1,
+    batch,
+  );
   await call('GET', `/admin/batches/${batch?.id}`, { token: at });
-  await call('PATCH', `/admin/batches/${batch?.id}`, { token: at, body: { subject: 'GST' } });
+  await call('PATCH', `/admin/batches/${batch?.id}`, {
+    token: at,
+    body: { subject: 'GST', learnerIds: [riya?.id].filter(Boolean) },
+  });
   await call('DELETE', `/admin/batches/${batch?.id}`, { token: at });
 
   // —— Courses ——
@@ -481,9 +497,16 @@ async function main() {
       endsAt: new Date(Date.now() + 90000000).toISOString(),
       courseId,
       capacity: 50,
+      learnerIds: [riya?.id].filter(Boolean),
     },
   });
-  await call('POST', `/admin/live-classes/${live?.id}/schedule`, { token: at });
+  const scheduledLive = await call('POST', `/admin/live-classes/${live?.id}/schedule`, { token: at });
+  // Without DAILY_API_KEY → provider_unavailable; with key → scheduled + joinUrl.
+  check(
+    'live schedule returns a capability message',
+    Boolean(scheduledLive?.message),
+    scheduledLive,
+  );
 
   await call('GET', '/admin/notification-templates', { token: at });
   const ntpl = await call('POST', '/admin/notification-templates', {

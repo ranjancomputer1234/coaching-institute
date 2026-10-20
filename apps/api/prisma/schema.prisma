@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // —— Content lifecycle (shared) ——
@@ -132,8 +133,9 @@ model Batch {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  learners Learner[]
+  learners    Learner[]
   memberships BatchMembership[]
+  liveClasses LiveClass[]
 }
 
 model Learner {
@@ -877,20 +879,28 @@ model EditorialItem {
 }
 
 model LiveClass {
-  id              String          @id @default(cuid())
-  title           String
-  courseId        String?
-  startsAt        DateTime
-  endsAt          DateTime
-  hostName        String?
-  capacity        Int?
-  status          LiveClassStatus @default(draft)
-  provider        String          @default("unconfigured")
-  providerRoomId  String?
-  joinUrl         String?
-  recordingStatus String          @default("not_available")
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id                     String          @id @default(cuid())
+  title                  String
+  courseId               String?
+  batchId                String?
+  batch                  Batch?          @relation(fields: [batchId], references: [id])
+  /// JSON string array of learner ids for a custom audience (subset of a batch or ad-hoc).
+  audienceLearnerIdsJson String          @default("[]")
+  startsAt               DateTime
+  endsAt                 DateTime
+  hostName               String?
+  capacity               Int?
+  status                 LiveClassStatus @default(draft)
+  provider               String          @default("unconfigured")
+  providerRoomId         String?
+  joinUrl                String?
+  recordingStatus        String          @default("not_available")
+  notifyCampaignId       String?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  @@index([batchId])
+  @@index([startsAt])
 }
 
 model NotificationTemplate {
