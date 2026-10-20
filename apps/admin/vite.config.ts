@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
     server: {
       // Railway sets PORT and reaches the container from outside localhost.
       host: process.env.PORT ? true : 'localhost',
+      allowedHosts: process.env.PORT ? true : undefined,
       port,
       strictPort: true,
       proxy: {
