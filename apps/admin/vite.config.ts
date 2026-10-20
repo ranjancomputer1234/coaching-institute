@@ -7,8 +7,8 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, rootDir, '');
-  const apiBase = env.VITE_API_BASE_URL || 'http://localhost:3333';
-  const port = Number(env.VITE_DEV_PORT || 5173);
+  const apiBase = env.VITE_API_BASE_URL || process.env.VITE_API_BASE_URL || 'http://localhost:3333';
+  const port = Number(process.env.PORT || env.VITE_DEV_PORT || 5173);
 
   return {
     envDir: rootDir,
@@ -19,6 +19,8 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      // Railway sets PORT and reaches the container from outside localhost.
+      host: process.env.PORT ? true : 'localhost',
       port,
       strictPort: true,
       proxy: {
