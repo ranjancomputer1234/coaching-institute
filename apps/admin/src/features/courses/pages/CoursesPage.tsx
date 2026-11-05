@@ -27,6 +27,9 @@ export function CoursesPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [slug, setSlug] = useState('');
+  const [lessonCourse, setLessonCourse] = useState<Course | null>(null);
+  const [lessonTitle, setLessonTitle] = useState('');
+  const [lessonDescription, setLessonDescription] = useState('');
   const [search, setSearch] = useState('');
   const [lifecycle, setLifecycle] = useState('');
   const [mode, setMode] = useState('');
@@ -57,12 +60,23 @@ export function CoursesPage() {
   });
 
   const addLesson = useMutation({
-    mutationFn: (id: string) =>
-      apiFetch(`/admin/courses/${id}/lessons`, {
+    mutationFn: () => {
+      if (!lessonCourse) throw new Error('Choose a course first');
+      const description = lessonDescription.trim();
+      return apiFetch(`/admin/courses/${lessonCourse.id}/lessons`, {
         method: 'POST',
-        body: JSON.stringify({ title: 'New lesson', sortOrder: 0 }),
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['courses'] }),
+        body: JSON.stringify({
+          title: lessonTitle.trim(),
+          ...(description ? { description } : {}),
+        }),
+      });
+    },
+    onSuccess: () => {
+      setLessonTitle('');
+      setLessonDescription('');
+      setLessonCourse(null);
+      queryClient.invalidateQueries({ queryKey: ['courses'] });
+    },
   });
 
   const rows = list.data ?? [];
@@ -168,7 +182,12 @@ export function CoursesPage() {
                         <button
                           type="button"
                           className="btn btn-ghost"
-                          onClick={() => addLesson.mutate(course.id)}
+                          onClick={() => {
+                            addLesson.reset();
+                            setLessonTitle('');
+                            setLessonDescription('');
+                            setLessonCourse(course);
+                          }}
                         >
                           Add lesson
                         </button>
@@ -228,6 +247,55 @@ export function CoursesPage() {
           </button>
           {create.error instanceof Error ? (
             <p className="error">{create.error.message}</p>
+          ) : null}
+        </form>
+      </ContentDrawer>
+
+      <ContentDrawer
+        open={lessonCourse !== null}
+        onClose={() => {
+          if (addLesson.isPending) return;
+          setLessonCourse(null);
+        }}
+        title="Add lesson"
+        size="full"
+      >
+        <form
+          className="stack-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            addLesson.mutate();
+          }}
+        >
+          <p className="muted small">
+            This lesson is added to {lessonCourse?.title}. Attach the video or file from Lessons
+            & resources after it is saved.
+          </p>
+          <div className="field">
+            <label htmlFor="lesson-title">Title</label>
+            <input
+              id="lesson-title"
+              value={lessonTitle}
+              onChange={(e) => setLessonTitle(e.target.value)}
+              required
+              minLength={1}
+              autoFocus
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="lesson-description">Description</label>
+            <textarea
+              id="lesson-description"
+              value={lessonDescription}
+              onChange={(e) => setLessonDescription(e.target.value)}
+              rows={4}
+            />
+          </div>
+          <button type="submit" className="btn" disabled={addLesson.isPending || !lessonTitle.trim()}>
+            {addLesson.isPending ? 'Adding…' : 'Add lesson'}
+          </button>
+          {addLesson.error instanceof Error ? (
+            <p className="error">{addLesson.error.message}</p>
           ) : null}
         </form>
       </ContentDrawer>

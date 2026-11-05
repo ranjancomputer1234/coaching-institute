@@ -10,6 +10,7 @@ import {
 import { LearnerCatalogueService } from './learner-catalogue.service';
 import { LessonProgressDto } from './dto/learning.dto';
 import { LearnerJwtAuthGuard } from '../../common/guards/learner-jwt-auth.guard';
+import { OptionalLearnerJwtAuthGuard } from '../../common/guards/optional-learner-jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller()
@@ -37,9 +38,29 @@ export class LearnerCatalogueController {
     return this.catalogue.search(q);
   }
 
+  @UseGuards(OptionalLearnerJwtAuthGuard)
+  @Get('courses')
+  listCourses(
+    @Query('search') search?: string,
+    @Query('pricing') pricing?: string,
+    @Query('cursor') cursor?: string,
+    @CurrentUser() user?: { learnerId: string } | null,
+  ) {
+    return this.catalogue.listCourses({
+      search,
+      pricing,
+      cursor,
+      learnerId: user?.learnerId,
+    });
+  }
+
+  @UseGuards(OptionalLearnerJwtAuthGuard)
   @Get('courses/:id')
-  getCourse(@Param('id') id: string) {
-    return this.catalogue.getCourse(id);
+  getCourse(
+    @Param('id') id: string,
+    @CurrentUser() user?: { learnerId: string } | null,
+  ) {
+    return this.catalogue.getCourse(id, user?.learnerId);
   }
 
   @UseGuards(LearnerJwtAuthGuard)

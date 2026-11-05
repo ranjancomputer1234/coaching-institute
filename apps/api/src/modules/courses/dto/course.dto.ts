@@ -46,6 +46,14 @@ export class CreateCourseDto {
   @IsInt()
   @Min(0)
   estimatedMinutes?: number;
+
+  @IsOptional()
+  @IsString()
+  coverImageUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  iconUrl?: string;
 }
 
 export class UpdateCourseDto {
@@ -81,6 +89,14 @@ export class UpdateCourseDto {
   @IsInt()
   @Min(0)
   estimatedMinutes?: number;
+
+  @IsOptional()
+  @IsString()
+  coverImageUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  iconUrl?: string;
 }
 
 export class CreateLessonDto {

@@ -140,12 +140,12 @@ export function AppLayout() {
 
       <aside className={`sidebar ${mobile ? 'is-mobile-open' : ''}`} aria-label="Sidebar">
         <div className="brand-row">
-          <NavLink to="/" className="brand" title="REDI Admin home">
+          <NavLink to="/" className="brand" title="RACI Admin home">
             <span className="brand-mark">R</span>
             {!collapsed && (
               <span className="brand-text">
-                REDI
-                <small>Admin console</small>
+                RACI
+                <small>Ranjan Educational Institute</small>
               </span>
             )}
           </NavLink>

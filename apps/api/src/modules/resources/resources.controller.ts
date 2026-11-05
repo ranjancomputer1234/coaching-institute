@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -12,6 +13,7 @@ import {
   CreateResourceDto,
   CreateVideoUploadDto,
   DownloadAuthorizationDto,
+  UpdateResourceDto,
 } from './dto/resource.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { LearnerJwtAuthGuard } from '../../common/guards/learner-jwt-auth.guard';
@@ -43,6 +45,17 @@ export class ResourcesController {
   @RequirePermissions('content.create')
   create(@Body() dto: CreateResourceDto, @CurrentUser() user: AdminActor) {
     return this.resources.create(dto, user);
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Patch('admin/resources/:id')
+  @RequirePermissions('content.edit')
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateResourceDto,
+    @CurrentUser() user: AdminActor,
+  ) {
+    return this.resources.update(id, dto, user);
   }
 
   @UseGuards(JwtAuthGuard, PermissionsGuard)

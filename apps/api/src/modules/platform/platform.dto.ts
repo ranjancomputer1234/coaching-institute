@@ -7,10 +7,12 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
-import { EditorialKind } from '@prisma/client';
+import { CourseCommercialMode, EditorialKind } from '@prisma/client';
 
 export class CreateEditorialDto {
   @IsEnum(EditorialKind)
@@ -31,6 +33,97 @@ export class CreateEditorialDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  pricing?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  featured?: boolean;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  iconKey?: string;
+
+  @IsOptional()
+  @IsString()
+  byline?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  readingMinutes?: number;
+
+  @IsOptional()
+  @IsString()
+  explanation?: string;
+
+  @IsOptional()
+  @IsString()
+  quizId?: string;
+
+  @IsOptional()
+  @IsString()
+  schema?: string;
+
+  @IsOptional()
+  @IsString()
+  prompt?: string;
+
+  @IsOptional()
+  @IsString()
+  modelAnswer?: string;
+
+  @IsOptional()
+  @IsString()
+  entriesJson?: string;
+
+  @IsOptional()
+  @IsString()
+  summaryChipsJson?: string;
+
+  @IsOptional()
+  @IsString()
+  tagsJson?: string;
+
+  @IsOptional()
+  @IsString()
+  highlightsJson?: string;
+}
+
+export class CreateContentCategoryDto {
+  @IsEnum(EditorialKind)
+  kind!: EditorialKind;
+
+  @IsString()
+  @MinLength(2)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  summary?: string;
+
+  @IsOptional()
+  @IsString()
+  pricing?: string;
+
+  @IsOptional()
+  @IsString()
+  iconKey?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
 }
 
 export class CreateLiveClassDto {
@@ -187,6 +280,54 @@ export class CreateSupportDto {
 export class UpdateSupportDto {
   @IsString()
   status!: string;
+}
+
+export class CreateLegalPageDto {
+  @IsString()
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+  slug!: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(12)
+  locale?: string;
+
+  @IsString()
+  @MinLength(2)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  summary?: string;
+
+  @IsString()
+  @MinLength(2)
+  body!: string;
+
+  @IsOptional()
+  @IsDateString()
+  effectiveAt?: string;
+}
+
+export class UpdateLegalPageDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  summary?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  body?: string;
+
+  @IsOptional()
+  @IsDateString()
+  effectiveAt?: string;
 }
 
 export class UpsertSettingDto {

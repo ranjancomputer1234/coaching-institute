@@ -7,16 +7,20 @@ import { ConfigService } from '@nestjs/config';
 import {
   AuditSeverity,
   ContentLifecycle,
+  CourseCommercialMode,
   EditorialKind,
   LiveClassStatus,
+  Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { DailyService } from './daily.service';
+import { LEGAL_PAGE_DEFAULTS } from './legal-pages';
 import {
   CreateCampaignDto,
   CreateCouponDto,
   CreateEditorialDto,
+  CreateLegalPageDto,
   CreateLiveClassDto,
   CreateOrderDto,
   CreateProductDto,
@@ -24,6 +28,7 @@ import {
   CreateSupportDto,
   CreateTemplateDto,
   ReconcileOrderDto,
+  UpdateLegalPageDto,
   UpdateSupportDto,
   UpsertSettingDto,
 } from './platform.dto';
@@ -74,6 +79,26 @@ export class PlatformService {
         summary: dto.summary,
         body: dto.body,
         category: dto.category,
+        categoryId: dto.categoryId,
+        pricing: dto.pricing ?? 'free',
+        commercialMode:
+          dto.pricing === 'paid'
+            ? CourseCommercialMode.paid
+            : CourseCommercialMode.free,
+        featured: dto.featured ?? false,
+        imageUrl: dto.imageUrl,
+        iconKey: dto.iconKey,
+        byline: dto.byline,
+        readingMinutes: dto.readingMinutes,
+        explanation: dto.explanation,
+        quizId: dto.quizId,
+        schema: dto.schema,
+        prompt: dto.prompt,
+        modelAnswer: dto.modelAnswer,
+        entriesJson: dto.entriesJson ?? '[]',
+        summaryChipsJson: dto.summaryChipsJson ?? '[]',
+        tagsJson: dto.tagsJson ?? '[]',
+        highlightsJson: dto.highlightsJson ?? '[]',
       },
     });
     await this.audit.write({
@@ -85,6 +110,80 @@ export class PlatformService {
       after: { kind: item.kind, title: item.title },
     });
     return item;
+  }
+
+  listContentCategories(kind?: EditorialKind) {
+    return this.prisma.contentCategory.findMany({
+      where: kind ? { kind } : undefined,
+      orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }],
+    });
+  }
+
+  async createContentCategory(
+    dto: {
+      kind: EditorialKind;
+      title: string;
+      summary?: string;
+      pricing?: string;
+      iconKey?: string;
+      sortOrder?: number;
+    },
+    actor: Actor,
+  ) {
+    const row = await this.prisma.contentCategory.create({
+      data: {
+        kind: dto.kind,
+        title: dto.title,
+        summary: dto.summary,
+        pricing: dto.pricing ?? 'free',
+        commercialMode:
+          dto.pricing === 'paid'
+            ? CourseCommercialMode.paid
+            : CourseCommercialMode.free,
+        iconKey: dto.iconKey,
+        sortOrder: dto.sortOrder ?? 0,
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'content_category.create',
+      resourceType: 'ContentCategory',
+      resourceId: row.id,
+      after: { kind: row.kind, title: row.title },
+    });
+    return row;
+  }
+
+  async publishContentCategory(id: string, actor: Actor) {
+    const before = await this.prisma.contentCategory.findUnique({
+      where: { id },
+    });
+    if (!before) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Category not found',
+        fieldErrors: {},
+      });
+    }
+    const row = await this.prisma.contentCategory.update({
+      where: { id },
+      data: {
+        lifecycle: ContentLifecycle.published,
+        publishedAt: new Date(),
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'content_category.publish',
+      resourceType: 'ContentCategory',
+      resourceId: id,
+      before: { lifecycle: before.lifecycle },
+      after: { lifecycle: row.lifecycle },
+      severity: AuditSeverity.notice,
+    });
+    return row;
   }
 
   async publishEditorial(id: string, actor: Actor) {
@@ -666,6 +765,266 @@ export class PlatformService {
       message:
         'Refund recorded as a manual approval. No payment gateway refund was sent.',
     };
+  }
+
+  private async ensureLegalPages() {
+    for (const page of LEGAL_PAGE_DEFAULTS) {
+      const existing = await this.prisma.legalPage.findFirst({
+        where: { slug: page.slug, locale: page.locale },
+        select: { id: true },
+      });
+      if (existing) continue;
+      const effectiveAt = new Date('2026-10-26T00:00:00.000Z');
+      try {
+        await this.prisma.legalPage.create({
+          data: {
+            slug: page.slug,
+            locale: page.locale,
+            title: page.title,
+            summary: page.summary,
+            body: page.body,
+            version: 1,
+            lifecycle: ContentLifecycle.published,
+            publishedAt: effectiveAt,
+            effectiveAt,
+          },
+        });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
+  async listLegalPages() {
+    await this.ensureLegalPages();
+    return this.prisma.legalPage.findMany({
+      orderBy: [{ slug: 'asc' }, { version: 'desc' }],
+    });
+  }
+
+  async listPublicLegal(locale = 'en') {
+    await this.ensureLegalPages();
+    const rows = await this.prisma.legalPage.findMany({
+      where: { locale, lifecycle: ContentLifecycle.published },
+      orderBy: [{ slug: 'asc' }, { version: 'desc' }],
+    });
+    const seen = new Set<string>();
+    return rows
+      .filter((row) => {
+        if (seen.has(row.slug)) return false;
+        seen.add(row.slug);
+        return true;
+      })
+      .map((row) => ({
+        slug: row.slug,
+        locale: row.locale,
+        title: row.title,
+        summary: row.summary,
+        version: row.version,
+        effectiveAt: row.effectiveAt,
+      }));
+  }
+
+  async getPublicLegal(slug: string, locale = 'en') {
+    await this.ensureLegalPages();
+    const row = await this.prisma.legalPage.findFirst({
+      where: { slug, locale, lifecycle: ContentLifecycle.published },
+      orderBy: { version: 'desc' },
+    });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Legal page not found',
+        fieldErrors: {},
+      });
+    }
+    return {
+      slug: row.slug,
+      locale: row.locale,
+      title: row.title,
+      summary: row.summary,
+      body: row.body,
+      version: row.version,
+      effectiveAt: row.effectiveAt,
+      publishedAt: row.publishedAt,
+    };
+  }
+
+  async createLegalPage(dto: CreateLegalPageDto, actor: Actor) {
+    const locale = (dto.locale ?? 'en').toLowerCase();
+    const latest = await this.prisma.legalPage.findFirst({
+      where: { slug: dto.slug, locale },
+      orderBy: { version: 'desc' },
+    });
+    const row = await this.prisma.legalPage.create({
+      data: {
+        slug: dto.slug,
+        locale,
+        title: dto.title,
+        summary: dto.summary,
+        body: dto.body,
+        effectiveAt: dto.effectiveAt ? new Date(dto.effectiveAt) : undefined,
+        version: (latest?.version ?? 0) + 1,
+        lifecycle: ContentLifecycle.draft,
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'legal.create',
+      resourceType: 'LegalPage',
+      resourceId: row.id,
+      after: { slug: row.slug, version: row.version, title: row.title },
+    });
+    return row;
+  }
+
+  async updateLegalPage(id: string, dto: UpdateLegalPageDto, actor: Actor) {
+    const current = await this.prisma.legalPage.findUnique({ where: { id } });
+    if (!current) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Legal page not found',
+        fieldErrors: {},
+      });
+    }
+    if (!dto.title && !dto.summary && !dto.body && !dto.effectiveAt) {
+      throw new BadRequestException({
+        code: 'VALIDATION',
+        message: 'Change the title, summary, body, or effective date',
+        fieldErrors: {},
+      });
+    }
+
+    const patch = {
+      ...(dto.title !== undefined ? { title: dto.title } : {}),
+      ...(dto.summary !== undefined ? { summary: dto.summary } : {}),
+      ...(dto.body !== undefined ? { body: dto.body } : {}),
+      ...(dto.effectiveAt !== undefined
+        ? { effectiveAt: new Date(dto.effectiveAt) }
+        : {}),
+    };
+
+    const editable =
+      current.lifecycle === ContentLifecycle.draft ||
+      current.lifecycle === ContentLifecycle.in_review ||
+      current.lifecycle === ContentLifecycle.changes_requested;
+
+    if (editable) {
+      const row = await this.prisma.legalPage.update({
+        where: { id },
+        data: patch,
+      });
+      await this.audit.write({
+        actorId: actor.userId,
+        actorDisplay: actor.email,
+        action: 'legal.update',
+        resourceType: 'LegalPage',
+        resourceId: row.id,
+        after: { slug: row.slug, version: row.version },
+      });
+      return row;
+    }
+
+    const draft = await this.prisma.legalPage.findFirst({
+      where: {
+        slug: current.slug,
+        locale: current.locale,
+        lifecycle: ContentLifecycle.draft,
+      },
+      orderBy: { version: 'desc' },
+    });
+    if (draft) {
+      const row = await this.prisma.legalPage.update({
+        where: { id: draft.id },
+        data: patch,
+      });
+      await this.audit.write({
+        actorId: actor.userId,
+        actorDisplay: actor.email,
+        action: 'legal.update',
+        resourceType: 'LegalPage',
+        resourceId: row.id,
+        after: { slug: row.slug, version: row.version },
+      });
+      return row;
+    }
+
+    const latest = await this.prisma.legalPage.findFirst({
+      where: { slug: current.slug, locale: current.locale },
+      orderBy: { version: 'desc' },
+    });
+    const row = await this.prisma.legalPage.create({
+      data: {
+        slug: current.slug,
+        locale: current.locale,
+        title: dto.title ?? current.title,
+        summary: dto.summary ?? current.summary,
+        body: dto.body ?? current.body,
+        effectiveAt: dto.effectiveAt
+          ? new Date(dto.effectiveAt)
+          : current.effectiveAt,
+        version: (latest?.version ?? current.version) + 1,
+        lifecycle: ContentLifecycle.draft,
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'legal.draft',
+      resourceType: 'LegalPage',
+      resourceId: row.id,
+      before: { version: current.version, lifecycle: current.lifecycle },
+      after: { slug: row.slug, version: row.version },
+      severity: AuditSeverity.notice,
+    });
+    return row;
+  }
+
+  async publishLegalPage(id: string, actor: Actor) {
+    const current = await this.prisma.legalPage.findUnique({ where: { id } });
+    if (!current) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Legal page not found',
+        fieldErrors: {},
+      });
+    }
+    const row = await this.prisma.$transaction(async (tx) => {
+      await tx.legalPage.updateMany({
+        where: {
+          slug: current.slug,
+          locale: current.locale,
+          lifecycle: ContentLifecycle.published,
+          NOT: { id },
+        },
+        data: { lifecycle: ContentLifecycle.unpublished },
+      });
+      return tx.legalPage.update({
+        where: { id },
+        data: {
+          lifecycle: ContentLifecycle.published,
+          publishedAt: new Date(),
+          effectiveAt: current.effectiveAt ?? new Date(),
+        },
+      });
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'legal.publish',
+      resourceType: 'LegalPage',
+      resourceId: row.id,
+      after: { slug: row.slug, version: row.version, lifecycle: row.lifecycle },
+      severity: AuditSeverity.notice,
+    });
+    return row;
   }
 
   listSupport() {

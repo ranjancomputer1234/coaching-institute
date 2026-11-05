@@ -170,6 +170,9 @@ model Learner {
   documents          IssuedDocument[]
   downloadSessions   DownloadSession[]
   offlineGrants      OfflineGrant[]
+  factReactions      FactReaction[]
+  liveReminders      LiveClassReminder[]
+  liveHands          LiveClassHand[]
 }
 
 model LearnerCredential {
@@ -209,6 +212,7 @@ model Course {
   featured       Boolean              @default(false)
   estimatedMinutes Int?
   coverImageUrl  String?
+  iconUrl        String?
   revision       Int                  @default(1)
   publishedAt    DateTime?
   createdAt      DateTime             @default(now())
@@ -222,6 +226,28 @@ model Course {
   tests        Test[]
   resources    Resource[]
   entitlements Entitlement[]
+}
+
+/// Competitive exam catalogue (SSC, Banking, etc.). Explore tiles do not create these.
+model Exam {
+  id               String               @id @default(cuid())
+  title            String
+  summary          String?
+  description      String?
+  commercialMode   CourseCommercialMode @default(free)
+  iconKey          String?
+  themeKey         String?
+  imageUrl         String?
+  learnerCount     Int                  @default(0)
+  relatedExamsJson String               @default("[]")
+  lifecycle        ContentLifecycle     @default(draft)
+  publishedAt      DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  tests Test[]
+
+  @@index([lifecycle])
 }
 
 model Lesson {
@@ -371,15 +397,22 @@ model Test {
   mode            TestMode         @default(practice)
   courseId        String?
   course          Course?          @relation(fields: [courseId], references: [id])
+  examId          String?
+  exam            Exam?            @relation(fields: [examId], references: [id], onDelete: SetNull)
   semesterId      String?
   semester        SemesterDefinition? @relation(fields: [semesterId], references: [id])
   language        String           @default("en")
   instructions    String?
+  /// Learner-facing free/paid badge. Separate from course commercialMode.
+  pricing         String           @default("free")
+  marking         String           @default("+1")
   questionCount   Int              @default(0)
   durationMinutes Int              @default(60)
   maxScore        Float            @default(0)
   passThreshold   Float            @default(40)
   negativeMarking Boolean          @default(false)
+  /// Display string for the app (e.g. "0" or "-0.25").
+  negativeMarkingLabel String?
   attemptLimit    Int?
   lifecycle       ContentLifecycle @default(draft)
   resultPolicy    String           @default("after_manual_publish")
@@ -392,6 +425,8 @@ model Test {
 
   questions TestQuestion[]
   attempts  Attempt[]
+
+  @@index([examId, lifecycle])
 }
 
 model TestQuestion {
@@ -478,6 +513,7 @@ model SemesterDefinition {
   tests     Test[]
   progress  SemesterProgress[]
   reviews   SemesterReview[]
+  resources Resource[]
 
   @@unique([courseId, index])
 }
@@ -721,6 +757,8 @@ model Resource {
   contentVersion  Int              @default(1)
   courseId        String?
   course          Course?          @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  semesterId      String?
+  semester        SemesterDefinition? @relation(fields: [semesterId], references: [id], onDelete: SetNull)
   lessonId        String?
   lesson          Lesson?          @relation(fields: [lessonId], references: [id], onDelete: SetNull)
   mediaAssetId    String?
@@ -737,6 +775,7 @@ model Resource {
   documents        IssuedDocument[]
 
   @@index([courseId])
+  @@index([semesterId])
   @@index([lessonId])
 }
 
@@ -856,26 +895,91 @@ enum EditorialKind {
 enum LiveClassStatus {
   draft
   scheduled
+  starting
   live
+  reconnecting
   ended
   cancelled
   provider_unavailable
 }
 
-model EditorialItem {
-  id          String           @id @default(cuid())
-  kind        EditorialKind
-  title       String
-  summary     String?
-  body        String?
-  category    String?
-  lifecycle   ContentLifecycle @default(draft)
-  publishedAt DateTime?
-  revision    Int              @default(1)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+/// Stable category rows for news / facts / interview chips.
+model ContentCategory {
+  id             String               @id @default(cuid())
+  kind           EditorialKind
+  title          String
+  summary        String?
+  pricing        String               @default("free")
+  commercialMode CourseCommercialMode @default(free)
+  iconKey        String?
+  sortOrder      Int                  @default(0)
+  lifecycle      ContentLifecycle     @default(draft)
+  publishedAt    DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  items EditorialItem[]
 
   @@index([kind, lifecycle])
+}
+
+model EditorialItem {
+  id               String               @id @default(cuid())
+  kind             EditorialKind
+  title            String
+  summary          String?
+  body             String?
+  /// Legacy free-text category label (kept for admin compatibility).
+  category         String?
+  categoryId       String?
+  categoryRef      ContentCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  pricing          String               @default("free")
+  commercialMode   CourseCommercialMode @default(free)
+  featured         Boolean              @default(false)
+  imageUrl         String?
+  iconKey          String?
+  byline           String?
+  readingMinutes   Int?
+  tagsJson         String               @default("[]")
+  highlightsJson   String               @default("[]")
+  /// Fact explanation / long-form body companion.
+  explanation      String?
+  reactionCount    Int                  @default(0)
+  quizId           String?
+  /// Awareness layout: pairs | list | article
+  schema           String?
+  summaryChipsJson String               @default("[]")
+  /// Awareness entries JSON array: [{id,label,value,group?,iconColor?}]
+  entriesJson      String               @default("[]")
+  /// Interview prompt (falls back to title when empty).
+  prompt           String?
+  modelAnswer      String?
+  lifecycle        ContentLifecycle     @default(draft)
+  publishedAt      DateTime?
+  revision         Int                  @default(1)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  reactions FactReaction[]
+
+  @@index([kind, lifecycle])
+  @@index([categoryId])
+  @@index([featured, publishedAt])
+}
+
+model FactReaction {
+  id         String        @id @default(cuid())
+  factId     String
+  fact       EditorialItem @relation(fields: [factId], references: [id], onDelete: Cascade)
+  learnerId  String
+  learner    Learner       @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  reacted    Boolean       @default(false)
+  bookmarked Boolean       @default(false)
+  updatedAt  DateTime      @updatedAt
+  createdAt  DateTime      @default(now())
+
+  @@unique([factId, learnerId])
+  @@index([learnerId])
 }
 
 model LiveClass {
@@ -894,13 +998,44 @@ model LiveClass {
   provider               String          @default("unconfigured")
   providerRoomId         String?
   joinUrl                String?
+  playbackUrl            String?
   recordingStatus        String          @default("not_available")
+  viewerCount            Int             @default(0)
   notifyCampaignId       String?
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 
+  reminders LiveClassReminder[]
+  hands     LiveClassHand[]
+
   @@index([batchId])
   @@index([startsAt])
+}
+
+model LiveClassReminder {
+  id          String    @id @default(cuid())
+  liveClassId String
+  liveClass   LiveClass @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  learnerId   String
+  learner     Learner   @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  enabled     Boolean   @default(true)
+  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now())
+
+  @@unique([liveClassId, learnerId])
+}
+
+model LiveClassHand {
+  id          String    @id @default(cuid())
+  liveClassId String
+  liveClass   LiveClass @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  learnerId   String
+  learner     Learner   @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  raised      Boolean   @default(false)
+  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now())
+
+  @@unique([liveClassId, learnerId])
 }
 
 model NotificationTemplate {
@@ -1001,4 +1136,23 @@ model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+/// Versioned public legal copy (privacy, terms, refund, and the rest).
+model LegalPage {
+  id          String           @id @default(cuid())
+  slug        String
+  locale      String           @default("en")
+  title       String
+  summary     String?
+  body        String
+  version     Int              @default(1)
+  effectiveAt DateTime?
+  lifecycle   ContentLifecycle @default(draft)
+  publishedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([slug, locale, version])
+  @@index([slug, locale, lifecycle])
 }

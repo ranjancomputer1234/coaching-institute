@@ -3,12 +3,32 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ContentLifecycle, CourseCommercialMode } from '@prisma/client';
+import {
+  ContentLifecycle,
+  CourseCommercialMode,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { ContentAccessService } from '../content-access/content-access.service';
 import { LessonProgressDto } from './dto/learning.dto';
+import { parseCursorTake, toPage } from '../../common/utils/pagination';
+import { resolveCommercialAccess } from '../../common/utils/content-access';
 
 const published = { lifecycle: ContentLifecycle.published };
+
+const courseListSelect = {
+  id: true,
+  slug: true,
+  title: true,
+  shortTitle: true,
+  summary: true,
+  description: true,
+  commercialMode: true,
+  deliveryType: true,
+  estimatedMinutes: true,
+  coverImageUrl: true,
+  iconUrl: true,
+} satisfies Prisma.CourseSelect;
 
 @Injectable()
 export class LearnerCatalogueService {
@@ -26,55 +46,85 @@ export class LearnerCatalogueService {
     };
   }
 
+  private async courseAccess(
+    courseId: string,
+    commercialMode: CourseCommercialMode,
+    learnerId?: string,
+  ) {
+    if (learnerId) {
+      const decision = await this.access.resolveCourseAccess(
+        learnerId,
+        courseId,
+      );
+      const reason =
+        decision.reason === 'entitlement_required'
+          ? 'purchase_required'
+          : decision.reason;
+      return {
+        granted: decision.granted,
+        canPreview: decision.canPreview,
+        canDownload: decision.canDownload,
+        reason,
+        source: decision.source,
+      };
+    }
+    return resolveCommercialAccess(commercialMode, { learnerId: null });
+  }
+
   async home(learnerId?: string) {
     const now = new Date();
-    const [banners, sections, featuredCourses, continuing] = await Promise.all([
-      this.prisma.banner.findMany({
-        where: { lifecycle: ContentLifecycle.published, ...this.window(now) },
-        orderBy: [{ priority: 'asc' }, { publishedAt: 'desc' }],
-        take: 8,
-      }),
-      this.prisma.exploreSection.findMany({
-        where: {
-          lifecycle: ContentLifecycle.published,
-          homeVisible: true,
-          ...this.window(now),
-        },
-        orderBy: { sortOrder: 'asc' },
-      }),
-      this.prisma.course.findMany({
-        where: { ...published, featured: true },
-        orderBy: { publishedAt: 'desc' },
-        take: 8,
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          shortTitle: true,
-          summary: true,
-          commercialMode: true,
-          estimatedMinutes: true,
-          coverImageUrl: true,
-        },
-      }),
-      learnerId
-        ? this.prisma.lessonProgress.findMany({
-            where: { learnerId, status: { not: 'completed' } },
-            include: {
-              lesson: {
-                select: {
-                  id: true,
-                  title: true,
-                  courseId: true,
-                  course: { select: { title: true } },
+    const [bannerRows, sections, featuredCourses, continuing] =
+      await Promise.all([
+        this.prisma.banner.findMany({
+          where: {
+            lifecycle: ContentLifecycle.published,
+            placement: 'hero',
+            imageUrl: { not: null },
+            ...this.window(now),
+          },
+          orderBy: [{ priority: 'desc' }, { publishedAt: 'desc' }],
+          take: 8,
+        }),
+        this.prisma.exploreSection.findMany({
+          where: {
+            lifecycle: ContentLifecycle.published,
+            homeVisible: true,
+            ...this.window(now),
+          },
+          orderBy: { sortOrder: 'asc' },
+        }),
+        this.prisma.course.findMany({
+          where: {
+            ...published,
+            featured: true,
+            commercialMode: { not: CourseCommercialMode.hidden_internal },
+          },
+          orderBy: { publishedAt: 'desc' },
+          take: 8,
+          select: courseListSelect,
+        }),
+        learnerId
+          ? this.prisma.lessonProgress.findMany({
+              where: { learnerId, status: { not: 'completed' } },
+              include: {
+                lesson: {
+                  select: {
+                    id: true,
+                    title: true,
+                    courseId: true,
+                    course: { select: { title: true } },
+                  },
                 },
               },
-            },
-            orderBy: { updatedAt: 'desc' },
-            take: 5,
-          })
-        : Promise.resolve([]),
-    ]);
+              orderBy: { updatedAt: 'desc' },
+              take: 5,
+            })
+          : Promise.resolve([]),
+      ]);
+
+    const banners = bannerRows.filter(
+      (b) => typeof b.imageUrl === 'string' && b.imageUrl.trim().length > 0,
+    );
 
     return {
       banners,
@@ -88,6 +138,67 @@ export class LearnerCatalogueService {
         progressPct: row.progressPct,
       })),
     };
+  }
+
+  async listCourses(opts: {
+    search?: string;
+    pricing?: string;
+    cursor?: string;
+    learnerId?: string;
+  }) {
+    const { take, pageSize, ...cursorArgs } = parseCursorTake(opts.cursor);
+    const search = opts.search?.trim();
+    const pricing = opts.pricing?.trim().toLowerCase();
+
+    const commercialModeFilter: Prisma.CourseWhereInput['commercialMode'] =
+      pricing === 'free'
+        ? CourseCommercialMode.free
+        : pricing === 'paid'
+          ? {
+              notIn: [
+                CourseCommercialMode.free,
+                CourseCommercialMode.hidden_internal,
+              ],
+            }
+          : { not: CourseCommercialMode.hidden_internal };
+
+    const where: Prisma.CourseWhereInput = {
+      ...published,
+      commercialMode: commercialModeFilter,
+      ...(search
+        ? {
+            OR: [
+              { title: { contains: search, mode: 'insensitive' } },
+              { summary: { contains: search, mode: 'insensitive' } },
+              { shortTitle: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [rows, total] = await Promise.all([
+      this.prisma.course.findMany({
+        where,
+        ...cursorArgs,
+        take,
+        orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+        select: courseListSelect,
+      }),
+      this.prisma.course.count({ where }),
+    ]);
+
+    const page = toPage(rows, pageSize, total);
+    const items = await Promise.all(
+      page.items.map(async (course) => ({
+        ...course,
+        access: await this.courseAccess(
+          course.id,
+          course.commercialMode,
+          opts.learnerId,
+        ),
+      })),
+    );
+    return { ...page, items };
   }
 
   categories() {
@@ -139,13 +250,18 @@ export class LearnerCatalogueService {
 
   async getCourse(id: string, learnerId?: string) {
     const course = await this.prisma.course.findFirst({
-      where: { id, ...published },
+      where: {
+        id,
+        ...published,
+        commercialMode: { not: CourseCommercialMode.hidden_internal },
+      },
       include: {
         lessons: {
           where: published,
           orderBy: { sortOrder: 'asc' },
           select: {
             id: true,
+            courseId: true,
             title: true,
             description: true,
             sortOrder: true,
@@ -163,9 +279,11 @@ export class LearnerCatalogueService {
         fieldErrors: {},
       });
     }
-    const access = learnerId
-      ? await this.access.resolveCourseAccess(learnerId, id)
-      : null;
+    const access = await this.courseAccess(
+      id,
+      course.commercialMode,
+      learnerId,
+    );
     return { ...course, access };
   }
 
@@ -208,6 +326,7 @@ export class LearnerCatalogueService {
       orderBy: { sortOrder: 'asc' },
       select: {
         id: true,
+        courseId: true,
         title: true,
         description: true,
         sortOrder: true,

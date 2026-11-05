@@ -1,4 +1,5 @@
 import { PrismaClient, ContentLifecycle, ExploreCategory } from '@prisma/client';
+import { LEGAL_PAGE_DEFAULTS } from '../src/modules/platform/legal-pages';
 import * as bcrypt from 'bcrypt';
 import {
   ALL_PERMISSIONS,
@@ -200,7 +201,15 @@ async function main() {
 
   await prisma.banner.upsert({
     where: { id: 'seed-banner-welcome' },
-    update: {},
+    update: {
+      imageUrl: 'https://picsum.photos/seed/redi-banner-welcome/1080/432',
+      placement: 'hero',
+      priority: 10,
+      targetKind: 'catalog',
+      targetRef: 'course',
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
     create: {
       id: 'seed-banner-welcome',
       campaignName: 'Welcome 2026',
@@ -209,9 +218,10 @@ async function main() {
       ctaLabel: 'Explore',
       placement: 'hero',
       priority: 10,
-      targetKind: 'section',
-      targetRef: 'computer-courses',
-      altText: 'Students learning at REDI',
+      imageUrl: 'https://picsum.photos/seed/redi-banner-welcome/1080/432',
+      targetKind: 'catalog',
+      targetRef: 'course',
+      altText: 'Start learning with REDI',
       lifecycle: ContentLifecycle.published,
       publishedAt: new Date(),
     },
@@ -525,10 +535,517 @@ async function main() {
     });
   }
 
+  const legalEffectiveAt = new Date('2026-10-26T00:00:00.000Z');
+  for (const page of LEGAL_PAGE_DEFAULTS) {
+    const existing = await prisma.legalPage.findFirst({
+      where: { slug: page.slug, locale: page.locale },
+      select: { id: true },
+    });
+    if (existing) continue;
+    await prisma.legalPage.create({
+      data: {
+        slug: page.slug,
+        locale: page.locale,
+        title: page.title,
+        summary: page.summary,
+        body: page.body,
+        version: 1,
+        lifecycle: ContentLifecycle.published,
+        publishedAt: legalEffectiveAt,
+        effectiveAt: legalEffectiveAt,
+      },
+    });
+  }
+
+  const dummyCourseCount = await seedDummyCatalogue();
+  await seedLearnerContentApis(batch.id);
+
   console.log('Learner login: riya@learner.local / learner123');
   console.log('PDF resource ID:', pdfResource.id);
   console.log('Video resource ID:', videoResource.id);
+  console.log(`Dummy courses ready: ${dummyCourseCount} (public sample MP4s)`);
   console.log('Roles, permissions, learner protected-download sample data ready');
+}
+
+/** Exams, editorial, and live classes for learner app screens (update 031126). */
+async function seedLearnerContentApis(batchId: string) {
+  const exam = await prisma.exam.upsert({
+    where: { id: 'exam-ssc' },
+    update: {
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+    create: {
+      id: 'exam-ssc',
+      title: 'SSC CGL',
+      summary: 'Tier 1 practice',
+      description: 'Syllabus, guided practice and mock tests',
+      commercialMode: 'free',
+      iconKey: 'target',
+      themeKey: 'purple',
+      learnerCount: 2400,
+      relatedExamsJson: JSON.stringify(['Banking', 'Railways']),
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+  });
+
+  const dailyTest = await prisma.test.upsert({
+    where: { id: 'test-daily' },
+    update: {
+      examId: exam.id,
+      pricing: 'free',
+      mode: 'practice',
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+    create: {
+      id: 'test-daily',
+      title: 'Daily current affairs',
+      examId: exam.id,
+      mode: 'practice',
+      pricing: 'free',
+      marking: '+1',
+      negativeMarkingLabel: '0',
+      questionCount: 10,
+      durationMinutes: 15,
+      passThreshold: 40,
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+  });
+
+  await prisma.test.upsert({
+    where: { id: 'test-ssc-mock-1' },
+    update: { examId: exam.id, lifecycle: ContentLifecycle.published },
+    create: {
+      id: 'test-ssc-mock-1',
+      title: 'SSC CGL Mock 1',
+      examId: exam.id,
+      mode: 'formal',
+      pricing: 'free',
+      marking: '+2',
+      negativeMarkingLabel: '-0.5',
+      questionCount: 25,
+      durationMinutes: 30,
+      passThreshold: 40,
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+  });
+
+  const newsNational = await prisma.contentCategory.upsert({
+    where: { id: 'news-national' },
+    update: { lifecycle: ContentLifecycle.published, publishedAt: new Date() },
+    create: {
+      id: 'news-national',
+      kind: 'news',
+      title: 'National',
+      summary: 'India and policy',
+      pricing: 'free',
+      iconKey: 'news',
+      sortOrder: 0,
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+  });
+
+  await prisma.editorialItem.upsert({
+    where: { id: 'news-1' },
+    update: {
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+      categoryId: newsNational.id,
+      featured: true,
+    },
+    create: {
+      id: 'news-1',
+      kind: 'news',
+      title: 'Cabinet clears the new skilling plan',
+      summary: 'A short summary for the card.',
+      body: JSON.stringify([
+        'First paragraph.',
+        'Second paragraph.',
+      ]),
+      categoryId: newsNational.id,
+      category: 'National',
+      pricing: 'free',
+      featured: true,
+      byline: 'RACI News',
+      readingMinutes: 3,
+      tagsJson: JSON.stringify(['policy', 'jobs']),
+      highlightsJson: JSON.stringify(['Point one', 'Point two']),
+      imageUrl: 'https://picsum.photos/seed/redi-news-1/800/450',
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+  });
+
+  await prisma.editorialItem.upsert({
+    where: { id: 'topic-capitals' },
+    update: {
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+      schema: 'pairs',
+    },
+    create: {
+      id: 'topic-capitals',
+      kind: 'awareness',
+      title: 'States and Capitals',
+      summary: 'Indian states',
+      pricing: 'free',
+      iconKey: 'book',
+      schema: 'pairs',
+      summaryChipsJson: JSON.stringify(['28 states', '8 union territories']),
+      entriesJson: JSON.stringify([
+        {
+          id: 'entry-bihar',
+          label: 'Bihar',
+          value: 'Patna',
+          group: 'State',
+          iconColor: '#1A237E',
+        },
+        {
+          id: 'entry-jharkhand',
+          label: 'Jharkhand',
+          value: 'Ranchi',
+          group: 'State',
+          iconColor: '#004D40',
+        },
+      ]),
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+  });
+
+  const factsScience = await prisma.contentCategory.upsert({
+    where: { id: 'facts-science' },
+    update: { lifecycle: ContentLifecycle.published, publishedAt: new Date() },
+    create: {
+      id: 'facts-science',
+      kind: 'fact',
+      title: 'Science',
+      summary: 'Short science facts',
+      pricing: 'free',
+      iconKey: 'bulb',
+      sortOrder: 0,
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+  });
+
+  await prisma.editorialItem.upsert({
+    where: { id: 'fact-1' },
+    update: {
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+      categoryId: factsScience.id,
+      featured: true,
+      quizId: dailyTest.id,
+    },
+    create: {
+      id: 'fact-1',
+      kind: 'fact',
+      title: 'Honey never spoils.',
+      summary: 'Honey never spoils.',
+      explanation: 'Low water and acid keep it stable.',
+      categoryId: factsScience.id,
+      pricing: 'free',
+      featured: true,
+      reactionCount: 18,
+      quizId: dailyTest.id,
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+  });
+
+  const intHr = await prisma.contentCategory.upsert({
+    where: { id: 'int-hr' },
+    update: { lifecycle: ContentLifecycle.published, publishedAt: new Date() },
+    create: {
+      id: 'int-hr',
+      kind: 'interview',
+      title: 'HR questions',
+      summary: 'Introductions and behaviour',
+      pricing: 'free',
+      iconKey: 'users',
+      sortOrder: 0,
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+  });
+
+  await prisma.contentCategory.upsert({
+    where: { id: 'int-tech' },
+    update: { lifecycle: ContentLifecycle.published, publishedAt: new Date() },
+    create: {
+      id: 'int-tech',
+      kind: 'interview',
+      title: 'Technical',
+      summary: 'Role and domain questions',
+      pricing: 'free',
+      iconKey: 'code',
+      sortOrder: 1,
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+  });
+
+  await prisma.editorialItem.upsert({
+    where: { id: 'q-tell-me' },
+    update: {
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+      categoryId: intHr.id,
+    },
+    create: {
+      id: 'q-tell-me',
+      kind: 'interview',
+      title: 'Tell me about yourself.',
+      prompt: 'Tell me about yourself.',
+      modelAnswer:
+        'Present role, one proof point, and why this job.',
+      categoryId: intHr.id,
+      pricing: 'free',
+      lifecycle: ContentLifecycle.published,
+      publishedAt: new Date(),
+    },
+  });
+
+  const starts = new Date();
+  starts.setHours(starts.getHours() + 2);
+  const ends = new Date(starts.getTime() + 60 * 60 * 1000);
+
+  await prisma.liveClass.upsert({
+    where: { id: 'live-tally-1' },
+    update: {
+      status: 'scheduled',
+      startsAt: starts,
+      endsAt: ends,
+      batchId,
+      hostName: 'RACI Faculty',
+    },
+    create: {
+      id: 'live-tally-1',
+      title: 'Tally Prime — GST entries',
+      batchId,
+      startsAt: starts,
+      endsAt: ends,
+      hostName: 'RACI Faculty',
+      status: 'scheduled',
+      provider: 'unconfigured',
+      recordingStatus: 'not_available',
+      viewerCount: 0,
+    },
+  });
+
+  console.log('Learner content APIs seeded (exams, news, awareness, facts, interview, live)');
+}
+
+/** Published sample courses and video lessons for local admin / learner testing. */
+async function seedDummyCatalogue() {
+  const sample = (file: string) =>
+    `https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/${file}`;
+
+  const courses: Array<{
+    slug: string;
+    title: string;
+    shortTitle: string;
+    summary: string;
+    description: string;
+    commercialMode: 'free' | 'paid';
+    featured: boolean;
+    estimatedMinutes: number;
+    level: string;
+    coverImageUrl: string;
+    lessons: Array<{
+      title: string;
+      description: string;
+      sortOrder: number;
+      durationMinutes: number;
+      isPreview?: boolean;
+      videoTitle: string;
+      mediaUrl: string;
+    }>;
+  }> = [
+    {
+      slug: 'ms-excel-beginners',
+      title: 'MS Excel for Beginners',
+      shortTitle: 'Excel',
+      summary: 'Spreadsheets, formulas, and charts for everyday office work.',
+      description:
+        'Dummy course for local testing. Lesson files are short public sample clips, not real Excel lessons.',
+      commercialMode: 'free',
+      featured: true,
+      estimatedMinutes: 28,
+      level: 'beginner',
+      coverImageUrl: 'https://picsum.photos/seed/redi-excel/800/450',
+      lessons: [
+        {
+          title: 'What is a spreadsheet',
+          description: 'Rows, columns, and your first workbook.',
+          sortOrder: 0,
+          durationMinutes: 8,
+          isPreview: true,
+          videoTitle: 'Excel — What is a spreadsheet',
+          mediaUrl: sample('ForBiggerBlazes.mp4'),
+        },
+        {
+          title: 'Formulas and functions',
+          description: 'SUM, AVERAGE, and a simple IF.',
+          sortOrder: 1,
+          durationMinutes: 12,
+          videoTitle: 'Excel — Formulas and functions',
+          mediaUrl: sample('ForBiggerEscapes.mp4'),
+        },
+        {
+          title: 'Charts in ten minutes',
+          description: 'Turn a small table into a column chart.',
+          sortOrder: 2,
+          durationMinutes: 8,
+          videoTitle: 'Excel — Charts in ten minutes',
+          mediaUrl: sample('ForBiggerFun.mp4'),
+        },
+      ],
+    },
+    {
+      slug: 'gst-basics',
+      title: 'GST Basics for Small Business',
+      shortTitle: 'GST',
+      summary: 'How GST works and what a small shop needs to file.',
+      description:
+        'Dummy paid course for local testing. Lesson files are short public sample clips.',
+      commercialMode: 'paid',
+      featured: true,
+      estimatedMinutes: 22,
+      level: 'beginner',
+      coverImageUrl: 'https://picsum.photos/seed/redi-gst/800/450',
+      lessons: [
+        {
+          title: 'What is GST',
+          description: 'Tax on supply of goods and services.',
+          sortOrder: 0,
+          durationMinutes: 10,
+          isPreview: true,
+          videoTitle: 'GST — What is GST',
+          mediaUrl: sample('ForBiggerJoyrides.mp4'),
+        },
+        {
+          title: 'Filing a simple return',
+          description: 'A walkthrough of a basic monthly return.',
+          sortOrder: 1,
+          durationMinutes: 12,
+          videoTitle: 'GST — Filing a simple return',
+          mediaUrl: sample('ForBiggerMeltdowns.mp4'),
+        },
+      ],
+    },
+    {
+      slug: 'spoken-english-starter',
+      title: 'Spoken English Starter',
+      shortTitle: 'English',
+      summary: 'Introductions and everyday conversations for new speakers.',
+      description:
+        'Dummy free course for local testing. Lesson files are short public sample clips.',
+      commercialMode: 'free',
+      featured: false,
+      estimatedMinutes: 18,
+      level: 'beginner',
+      coverImageUrl: 'https://picsum.photos/seed/redi-english/800/450',
+      lessons: [
+        {
+          title: 'Introducing yourself',
+          description: 'Name, city, and what you do.',
+          sortOrder: 0,
+          durationMinutes: 8,
+          isPreview: true,
+          videoTitle: 'English — Introducing yourself',
+          mediaUrl: sample('SubaruOutbackOnStreetAndDirt.mp4'),
+        },
+        {
+          title: 'Everyday conversations',
+          description: 'Asking for directions and ordering food.',
+          sortOrder: 1,
+          durationMinutes: 10,
+          videoTitle: 'English — Everyday conversations',
+          mediaUrl: sample('TearsOfSteel.mp4'),
+        },
+      ],
+    },
+  ];
+
+  for (const item of courses) {
+    const course = await prisma.course.upsert({
+      where: { slug: item.slug },
+      update: {},
+      create: {
+        slug: item.slug,
+        title: item.title,
+        shortTitle: item.shortTitle,
+        summary: item.summary,
+        description: item.description,
+        commercialMode: item.commercialMode,
+        lifecycle: ContentLifecycle.published,
+        publishedAt: new Date(),
+        featured: item.featured,
+        estimatedMinutes: item.estimatedMinutes,
+        level: item.level,
+        language: 'en',
+        coverImageUrl: item.coverImageUrl,
+      },
+    });
+
+    for (const lesson of item.lessons) {
+      let row = await prisma.lesson.findFirst({
+        where: { courseId: course.id, title: lesson.title },
+      });
+      if (!row) {
+        row = await prisma.lesson.create({
+          data: {
+            courseId: course.id,
+            title: lesson.title,
+            description: lesson.description,
+            sortOrder: lesson.sortOrder,
+            durationMinutes: lesson.durationMinutes,
+            contentType: 'video',
+            mediaUrl: lesson.mediaUrl,
+            isPreview: lesson.isPreview ?? false,
+            lifecycle: ContentLifecycle.published,
+          },
+        });
+      }
+
+      const existingVideo = await prisma.resource.findFirst({
+        where: { lessonId: row.id, title: lesson.videoTitle },
+      });
+      if (!existingVideo) {
+        await prisma.resource.create({
+          data: {
+            title: lesson.videoTitle,
+            kind: 'video',
+            mimeType: 'video/mp4',
+            course: { connect: { id: course.id } },
+            lesson: { connect: { id: row.id } },
+            downloadable: true,
+            previewAllowed: lesson.isPreview ?? false,
+            lifecycle: ContentLifecycle.published,
+            publishedAt: new Date(),
+            mediaAsset: {
+              create: {
+                storageKey: lesson.mediaUrl,
+                mimeType: 'video/mp4',
+                packagingFormat: 'mp4',
+                drmScheme: 'none',
+                lifecycle: ContentLifecycle.published,
+              },
+            },
+          },
+        });
+      }
+    }
+  }
+
+  return courses.length;
 }
 
 main()

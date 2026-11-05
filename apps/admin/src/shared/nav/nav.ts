@@ -2,7 +2,7 @@ import {
   LayoutDashboard, Users, ShieldCheck, Layers, BookOpen, CalendarRange, PlaySquare,
   FolderKanban, HelpCircle, FileText, ClipboardList, BarChart3, Radio, Compass,
   Image, Newspaper, Lightbulb, Sparkles, Mic, ShoppingBag, TicketPercent, ShoppingCart,
-  RotateCcw, Bell, Mail, Award, IdCard, LifeBuoy, PieChart, ScrollText, Settings,
+  RotateCcw, Bell, Mail, Award, IdCard, LifeBuoy, PieChart, Scale, ScrollText, Settings,
   GraduationCap, type LucideIcon,
 } from 'lucide-react';
 
@@ -89,6 +89,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Operations', icon: Settings,
     items: [
       { label: 'Support', to: '/support', icon: LifeBuoy },
+      { label: 'Legal pages', to: '/legal', icon: Scale },
       { label: 'Reports', to: '/reports', icon: PieChart, permission: 'reports.read' },
       { label: 'Audit Log', to: '/audit', icon: ScrollText, permission: 'audit.read' },
       { label: 'Settings', to: '/settings', icon: Settings, permission: 'settings.manage' },

@@ -2,6 +2,8 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ProtectedRoute } from '../shared/auth/ProtectedRoute';
 import { AppLayout } from '../shared/layout/AppLayout';
 import { LoginPage } from '../features/auth/pages/LoginPage';
+import { PublicLegalPage } from '../features/legal/pages/PublicLegalPage';
+import { LegalPagesPage } from '../features/legal/pages/LegalPagesPage';
 import { DashboardPage } from '../features/dashboard/pages/DashboardPage';
 import { LearnersPage } from '../features/learners/pages/LearnersPage';
 import { BatchesPage } from '../features/batches/pages/BatchesPage';
@@ -33,6 +35,8 @@ export function AppRoutes() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/policies" element={<PublicLegalPage />} />
+        <Route path="/policies/:slug" element={<PublicLegalPage />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<AppLayout />}>
             <Route index element={<DashboardPage />} />
@@ -184,6 +188,7 @@ export function AppRoutes() {
               element={<DocumentsPage documentType="admit_card" title="Admit cards" />}
             />
             <Route path="support" element={<SupportPage />} />
+            <Route path="legal" element={<LegalPagesPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

@@ -12,8 +12,10 @@ import { EditorialKind } from '@prisma/client';
 import { PlatformService } from './platform.service';
 import {
   CreateCampaignDto,
+  CreateContentCategoryDto,
   CreateCouponDto,
   CreateEditorialDto,
+  CreateLegalPageDto,
   CreateLiveClassDto,
   CreateOrderDto,
   CreateProductDto,
@@ -21,6 +23,7 @@ import {
   CreateSupportDto,
   CreateTemplateDto,
   ReconcileOrderDto,
+  UpdateLegalPageDto,
   UpdateSupportDto,
   UpsertSettingDto,
 } from './platform.dto';
@@ -54,6 +57,30 @@ export class PlatformController {
   @RequirePermissions('content.publish')
   publishEditorial(@Param('id') id: string, @CurrentUser() user: Actor) {
     return this.platform.publishEditorial(id, user);
+  }
+
+  @Get('content-categories')
+  @RequirePermissions('content.edit')
+  listContentCategories(@Query('kind') kind?: EditorialKind) {
+    return this.platform.listContentCategories(kind);
+  }
+
+  @Post('content-categories')
+  @RequirePermissions('content.create')
+  createContentCategory(
+    @Body() dto: CreateContentCategoryDto,
+    @CurrentUser() user: Actor,
+  ) {
+    return this.platform.createContentCategory(dto, user);
+  }
+
+  @Post('content-categories/:id/publish')
+  @RequirePermissions('content.publish')
+  publishContentCategory(
+    @Param('id') id: string,
+    @CurrentUser() user: Actor,
+  ) {
+    return this.platform.publishContentCategory(id, user);
   }
 
   @Get('live-classes')
@@ -166,6 +193,33 @@ export class PlatformController {
   @RequirePermissions('payments.refund_approve')
   approveRefund(@Param('id') id: string, @CurrentUser() user: Actor) {
     return this.platform.approveRefund(id, user);
+  }
+
+  @Get('legal')
+  listLegal() {
+    return this.platform.listLegalPages();
+  }
+
+  @Post('legal')
+  @RequirePermissions('content.create')
+  createLegal(@Body() dto: CreateLegalPageDto, @CurrentUser() user: Actor) {
+    return this.platform.createLegalPage(dto, user);
+  }
+
+  @Patch('legal/:id')
+  @RequirePermissions('content.edit')
+  updateLegal(
+    @Param('id') id: string,
+    @Body() dto: UpdateLegalPageDto,
+    @CurrentUser() user: Actor,
+  ) {
+    return this.platform.updateLegalPage(id, dto, user);
+  }
+
+  @Post('legal/:id/publish')
+  @RequirePermissions('content.publish')
+  publishLegal(@Param('id') id: string, @CurrentUser() user: Actor) {
+    return this.platform.publishLegalPage(id, user);
   }
 
   @Get('support-cases')

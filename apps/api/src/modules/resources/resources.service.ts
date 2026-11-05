@@ -19,12 +19,32 @@ import {
   CreateResourceDto,
   CreateVideoUploadDto,
   DownloadAuthorizationDto,
+  UpdateResourceDto,
 } from './dto/resource.dto';
 import { MuxService } from './mux.service';
 import { CloudinaryService } from './cloudinary.service';
 import { randomUUID } from 'node:crypto';
 
 type AdminActor = { userId: string; email?: string };
+
+type Placement = {
+  courseId: string | null;
+  lessonId: string | null;
+  semesterId: string | null;
+};
+
+const adminResourceInclude = {
+  mediaAsset: true,
+  course: { select: { id: true, title: true, deliveryType: true } },
+  lesson: { select: { id: true, title: true } },
+  semester: { select: { id: true, title: true, index: true } },
+};
+
+function normalizeId(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 @Injectable()
 export class ResourcesService {
@@ -39,16 +59,99 @@ export class ResourcesService {
 
   findAllAdmin() {
     return this.prisma.resource.findMany({
-      include: {
-        mediaAsset: true,
-        course: { select: { id: true, title: true } },
-        lesson: { select: { id: true, title: true } },
-      },
+      include: adminResourceInclude,
       orderBy: { updatedAt: 'desc' },
     });
   }
 
+  /**
+   * A lesson forces its course. A semester is kept only when it belongs to
+   * that course.
+   */
+  private async resolvePlacement(input: {
+    courseId?: string | null;
+    lessonId?: string | null;
+    semesterId?: string | null;
+  }): Promise<Placement> {
+    let courseId = normalizeId(input.courseId);
+    const lessonId = normalizeId(input.lessonId);
+    let semesterId = normalizeId(input.semesterId);
+
+    if (lessonId) {
+      const lesson = await this.prisma.lesson.findUnique({
+        where: { id: lessonId },
+      });
+      if (!lesson) {
+        throw new BadRequestException({
+          code: 'INVALID_LESSON',
+          message: 'Lesson not found',
+          fieldErrors: { lessonId: 'Lesson not found' },
+        });
+      }
+      if (courseId && courseId !== lesson.courseId) {
+        throw new BadRequestException({
+          code: 'LESSON_COURSE_MISMATCH',
+          message: 'That lesson belongs to a different course',
+          fieldErrors: { lessonId: 'That lesson belongs to a different course' },
+        });
+      }
+      courseId = lesson.courseId;
+    }
+
+    if (semesterId && !courseId) {
+      throw new BadRequestException({
+        code: 'SEMESTER_REQUIRES_COURSE',
+        message: 'Choose a course before assigning a semester',
+        fieldErrors: { semesterId: 'Choose a course first' },
+      });
+    }
+
+    if (courseId) {
+      const course = await this.prisma.course.findUnique({
+        where: { id: courseId },
+      });
+      if (!course) {
+        throw new BadRequestException({
+          code: 'INVALID_COURSE',
+          message: 'Course not found',
+          fieldErrors: { courseId: 'Course not found' },
+        });
+      }
+      if (semesterId) {
+        const semester = await this.prisma.semesterDefinition.findUnique({
+          where: { id: semesterId },
+        });
+        if (!semester || semester.courseId !== courseId) {
+          throw new BadRequestException({
+            code: 'INVALID_SEMESTER',
+            message: 'That semester does not belong to the selected course',
+            fieldErrors: {
+              semesterId: 'That semester does not belong to the selected course',
+            },
+          });
+        }
+      }
+    }
+
+    return { courseId, lessonId, semesterId };
+  }
+
+  private placementConnect(placement: Placement) {
+    return {
+      ...(placement.courseId
+        ? { course: { connect: { id: placement.courseId } } }
+        : {}),
+      ...(placement.lessonId
+        ? { lesson: { connect: { id: placement.lessonId } } }
+        : {}),
+      ...(placement.semesterId
+        ? { semester: { connect: { id: placement.semesterId } } }
+        : {}),
+    };
+  }
+
   async create(dto: CreateResourceDto, actor: AdminActor) {
+    const placement = await this.resolvePlacement(dto);
     let mediaAssetId = dto.mediaAssetId;
     if (!mediaAssetId && dto.storageKey) {
       const asset = await this.prisma.mediaAsset.create({
@@ -75,8 +178,7 @@ export class ResourcesService {
         kind: dto.kind,
         mimeType: dto.mimeType,
         byteSize: dto.byteSize,
-        ...(dto.courseId ? { course: { connect: { id: dto.courseId } } } : {}),
-        ...(dto.lessonId ? { lesson: { connect: { id: dto.lessonId } } } : {}),
+        ...this.placementConnect(placement),
         ...(mediaAssetId
           ? { mediaAsset: { connect: { id: mediaAssetId } } }
           : {}),
@@ -85,7 +187,7 @@ export class ResourcesService {
         lifecycle: ContentLifecycle.published,
         publishedAt: new Date(),
       },
-      include: { mediaAsset: true },
+      include: adminResourceInclude,
     });
 
     await this.audit.write({
@@ -200,6 +302,81 @@ export class ResourcesService {
     };
   }
 
+  async update(id: string, dto: UpdateResourceDto, actor: AdminActor) {
+    const existing = await this.prisma.resource.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: `Resource ${id} not found`,
+        fieldErrors: {},
+      });
+    }
+
+    const title = dto.title?.trim();
+    if (dto.title !== undefined && !title) {
+      throw new BadRequestException({
+        code: 'INVALID_TITLE',
+        message: 'Name is required',
+        fieldErrors: { title: 'Name is required' },
+      });
+    }
+
+    const placement = await this.resolvePlacement({
+      courseId: dto.courseId !== undefined ? dto.courseId : existing.courseId,
+      lessonId: dto.lessonId !== undefined ? dto.lessonId : existing.lessonId,
+      semesterId:
+        dto.semesterId !== undefined ? dto.semesterId : existing.semesterId,
+    });
+
+    const resource = await this.prisma.resource.update({
+      where: { id },
+      data: {
+        ...(title ? { title } : {}),
+        ...(dto.downloadable !== undefined
+          ? { downloadable: dto.downloadable }
+          : {}),
+        ...(dto.previewAllowed !== undefined
+          ? { previewAllowed: dto.previewAllowed }
+          : {}),
+        course: placement.courseId
+          ? { connect: { id: placement.courseId } }
+          : { disconnect: true },
+        lesson: placement.lessonId
+          ? { connect: { id: placement.lessonId } }
+          : { disconnect: true },
+        semester: placement.semesterId
+          ? { connect: { id: placement.semesterId } }
+          : { disconnect: true },
+      },
+      include: adminResourceInclude,
+    });
+
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'resource.update',
+      resourceType: 'Resource',
+      resourceId: resource.id,
+      before: {
+        title: existing.title,
+        courseId: existing.courseId,
+        semesterId: existing.semesterId,
+        lessonId: existing.lessonId,
+        downloadable: existing.downloadable,
+        previewAllowed: existing.previewAllowed,
+      },
+      after: {
+        title: resource.title,
+        courseId: resource.courseId,
+        semesterId: resource.semesterId,
+        lessonId: resource.lessonId,
+        downloadable: resource.downloadable,
+        previewAllowed: resource.previewAllowed,
+      },
+    });
+    return resource;
+  }
+
   private async createDraftVideoResource(
     dto: CreateVideoUploadDto,
     asset: {
@@ -209,6 +386,7 @@ export class ResourcesService {
       providerUploadId: string;
     },
   ) {
+    const placement = await this.resolvePlacement(dto);
     const media = await this.prisma.mediaAsset.create({
       data: {
         ...asset,
@@ -224,8 +402,7 @@ export class ResourcesService {
         kind: ResourceKind.video,
         mimeType: dto.mimeType ?? 'video/mp4',
         byteSize: dto.byteSize,
-        ...(dto.courseId ? { course: { connect: { id: dto.courseId } } } : {}),
-        ...(dto.lessonId ? { lesson: { connect: { id: dto.lessonId } } } : {}),
+        ...this.placementConnect(placement),
         mediaAsset: { connect: { id: media.id } },
         downloadable: false,
         previewAllowed: false,

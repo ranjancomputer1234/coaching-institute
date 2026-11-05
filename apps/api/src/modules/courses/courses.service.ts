@@ -35,6 +35,10 @@ export class CoursesService {
       where: { id },
       include: {
         lessons: { orderBy: { sortOrder: 'asc' } },
+        semesters: {
+          orderBy: { index: 'asc' },
+          select: { id: true, index: true, title: true },
+        },
         _count: { select: { enrollments: true } },
       },
     });
@@ -60,6 +64,8 @@ export class CoursesService {
         commercialMode: dto.commercialMode,
         featured: dto.featured ?? false,
         estimatedMinutes: dto.estimatedMinutes,
+        coverImageUrl: dto.coverImageUrl,
+        iconUrl: dto.iconUrl,
         lifecycle: ContentLifecycle.draft,
       },
     });
@@ -87,6 +93,8 @@ export class CoursesService {
         commercialMode: dto.commercialMode,
         featured: dto.featured,
         estimatedMinutes: dto.estimatedMinutes,
+        coverImageUrl: dto.coverImageUrl,
+        iconUrl: dto.iconUrl,
         revision: { increment: 1 },
       },
       include: { lessons: { orderBy: { sortOrder: 'asc' } } },
@@ -157,12 +165,20 @@ export class CoursesService {
 
   async addLesson(courseId: string, dto: CreateLessonDto, actor: Actor) {
     await this.findOne(courseId);
+    let sortOrder = dto.sortOrder;
+    if (sortOrder === undefined) {
+      const last = await this.prisma.lesson.aggregate({
+        where: { courseId },
+        _max: { sortOrder: true },
+      });
+      sortOrder = (last._max.sortOrder ?? -1) + 1;
+    }
     const lesson = await this.prisma.lesson.create({
       data: {
         courseId,
         title: dto.title,
         description: dto.description,
-        sortOrder: dto.sortOrder ?? 0,
+        sortOrder,
         durationMinutes: dto.durationMinutes,
         contentType: dto.contentType ?? 'video',
         isPreview: dto.isPreview ?? false,

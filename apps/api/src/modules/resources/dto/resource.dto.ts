@@ -31,6 +31,10 @@ export class CreateResourceDto {
 
   @IsOptional()
   @IsString()
+  semesterId?: string;
+
+  @IsOptional()
+  @IsString()
   lessonId?: string;
 
   @IsOptional()
@@ -104,7 +108,39 @@ export class CreateVideoUploadDto {
 
   @IsOptional()
   @IsString()
+  semesterId?: string;
+
+  @IsOptional()
+  @IsString()
   lessonId?: string;
+}
+
+/** Empty string clears an optional link. Omit the field to leave it unchanged. */
+export class UpdateResourceDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  courseId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  semesterId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  lessonId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  downloadable?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  previewAllowed?: boolean;
 }
 
 export class DownloadAuthorizationDto {

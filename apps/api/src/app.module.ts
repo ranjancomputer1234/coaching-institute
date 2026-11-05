@@ -26,6 +26,10 @@ import { EntitlementsModule } from './modules/entitlements/entitlements.module';
 import { ContentAccessModule } from './modules/content-access/content-access.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { HealthModule } from './modules/health/health.module';
+import { ExamsModule } from './modules/exams/exams.module';
+import { LearnerExamsModule } from './modules/learner-exams/learner-exams.module';
+import { LearnerEditorialModule } from './modules/learner-editorial/learner-editorial.module';
+import { LearnerLiveModule } from './modules/learner-live/learner-live.module';
 
 @Module({
   imports: [
@@ -46,6 +50,7 @@ import { HealthModule } from './modules/health/health.module';
     AuditEventsModule,
     QuestionsModule,
     TestsModule,
+    ExamsModule,
     AttemptsModule,
     ResultsModule,
     ProjectsModule,
@@ -53,6 +58,9 @@ import { HealthModule } from './modules/health/health.module';
     ContentAccessModule,
     LearnerAuthModule,
     LearnerCatalogueModule,
+    LearnerExamsModule,
+    LearnerEditorialModule,
+    LearnerLiveModule,
     ResourcesModule,
     DocumentsModule,
     EntitlementsModule,

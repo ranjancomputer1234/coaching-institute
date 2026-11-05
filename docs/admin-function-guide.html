@@ -1,0 +1,2121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RACI admin — how each function works</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #f3f5fb;
+        --text: #1b2559;
+        --muted: #8b93ab;
+        --blue: #3d5afe;
+        --orange: #ff8a1a;
+        --green: #1fa971;
+        --line: #e6ebf5;
+        --shadow: 0 10px 28px rgba(27, 37, 89, 0.06);
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; }
+      body {
+        font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(ellipse 70% 40% at 0% -8%, #e7edff 0%, transparent 52%),
+          radial-gradient(ellipse 50% 36% at 100% 0%, #e6f8ee 0%, transparent 46%),
+          var(--bg);
+      }
+      button, input { font: inherit; }
+      button { cursor: pointer; }
+      .app {
+        display: grid;
+        grid-template-columns: 300px 1fr;
+        min-height: 100vh;
+        gap: 16px;
+        padding: 16px;
+      }
+      .side, .stage {
+        background: #fff;
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+      }
+      .side {
+        padding: 18px 14px 14px;
+        display: flex;
+        flex-direction: column;
+        max-height: calc(100vh - 32px);
+        position: sticky;
+        top: 16px;
+      }
+      .brand {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 4px 8px 12px;
+      }
+      .mark {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        background: linear-gradient(160deg, #6d8bff, #3d5afe);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-weight: 800;
+        box-shadow: 0 8px 16px rgba(61, 90, 254, 0.28);
+        flex: none;
+      }
+      .brand strong { display: block; font-size: 1.05rem; letter-spacing: -0.03em; }
+      .brand small { color: var(--muted); font-weight: 600; }
+      .brand em {
+        display: block;
+        width: 46px;
+        height: 3px;
+        margin-top: 4px;
+        border-radius: 99px;
+        background: linear-gradient(90deg, #3d5afe, #1b2559);
+      }
+      .search {
+        margin: 4px 6px 10px;
+        background: #f4f6fb;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+        box-shadow: inset 0 0 0 1px #e7ecf6;
+      }
+      .search input {
+        border: 0;
+        background: transparent;
+        width: 100%;
+        padding: 10px 8px;
+        outline: none;
+        color: var(--text);
+      }
+      .progress {
+        margin: 0 8px 10px;
+        background: #e8efff;
+        border-radius: 14px;
+        padding: 10px 12px;
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+      .progress span { color: var(--blue); }
+      .bar {
+        height: 6px;
+        background: #fff;
+        border-radius: 99px;
+        margin-top: 8px;
+        overflow: hidden;
+      }
+      .bar i {
+        display: block;
+        height: 100%;
+        background: var(--blue);
+        width: 0;
+      }
+      .nav {
+        overflow: auto;
+        padding: 0 4px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .group-label {
+        font-size: 0.72rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 800;
+        margin: 8px 8px 4px;
+      }
+      .fn {
+        width: 100%;
+        text-align: left;
+        border: 0;
+        background: transparent;
+        border-radius: 12px;
+        padding: 8px 10px;
+        color: var(--text);
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: center;
+        font-weight: 650;
+        font-size: 0.92rem;
+      }
+      .fn:hover { background: #f5f7ff; }
+      .fn.active { background: #e8edff; color: var(--blue); }
+      .fn .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #d5dced;
+        flex: none;
+      }
+      .fn.learned .dot { background: var(--green); }
+      .stage { padding: 22px 26px 32px; min-width: 0; }
+      .kicker { margin: 0; color: var(--muted); font-weight: 700; font-size: 0.88rem; }
+      h1 {
+        margin: 4px 0 0;
+        font-size: 2rem;
+        letter-spacing: -0.04em;
+        font-weight: 800;
+      }
+      h1::after {
+        content: "";
+        display: block;
+        width: 84px;
+        height: 4px;
+        margin-top: 8px;
+        border-radius: 99px;
+        background: linear-gradient(90deg, #3d5afe, #1b2559);
+      }
+      .lead { color: #5c678a; max-width: 68ch; line-height: 1.55; }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 18px; }
+      .chip {
+        border: 0;
+        background: #eef2fb;
+        color: var(--text);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-weight: 700;
+        font-size: 0.85rem;
+      }
+      .chip.on { background: #e8edff; color: var(--blue); }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 12px;
+      }
+      .card {
+        text-align: left;
+        border: 0;
+        background: #f7f8fc;
+        border-radius: 18px;
+        padding: 14px;
+        box-shadow: var(--shadow);
+        color: inherit;
+      }
+      .card strong { display: block; margin-bottom: 4px; }
+      .card small { color: var(--muted); line-height: 1.4; display: block; }
+      .card .tag {
+        display: inline-block;
+        margin-bottom: 8px;
+        font-size: 0.72rem;
+        font-weight: 800;
+        color: var(--blue);
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 16px;
+        align-items: start;
+      }
+      .panel {
+        background: #fff;
+        border-radius: 20px;
+        box-shadow: var(--shadow);
+        padding: 16px;
+        border: 1px solid #f0f3fa;
+      }
+      .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+      .pill {
+        background: #e8efff;
+        color: #2f49d6;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 0.75rem;
+        font-weight: 800;
+      }
+      .pill.path { background: #f4f6fb; color: #5c678a; }
+      .steps { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+      .steps button {
+        text-align: left;
+        border: 0;
+        background: #f6f8ff;
+        border-radius: 14px;
+        padding: 10px 12px;
+        color: var(--text);
+      }
+      .steps button.on { background: #e8edff; box-shadow: inset 3px 0 0 var(--blue); }
+      .steps button b { display: block; }
+      .steps button span { color: var(--muted); font-size: 0.8rem; }
+      .say { line-height: 1.55; margin-top: 0; }
+      .watch {
+        background: #fff6ea;
+        border-radius: 14px;
+        padding: 10px 12px;
+        font-size: 0.88rem;
+        margin-top: 12px;
+      }
+      .mock {
+        background: #f4f6fb;
+        border-radius: 18px;
+        padding: 12px;
+      }
+      .mock-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .mock-top strong { font-size: 0.95rem; }
+      .mock-screen {
+        background: #fff;
+        border-radius: 16px;
+        padding: 14px;
+        min-height: 220px;
+      }
+      .mock-screen h3 { margin: 0 0 6px; font-size: 1.05rem; }
+      .mock-screen p { margin: 0 0 12px; color: var(--muted); font-size: 0.86rem; }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+      .btn {
+        border: 0;
+        border-radius: 999px;
+        padding: 8px 14px;
+        background: var(--orange);
+        color: #fff;
+        font-weight: 800;
+        box-shadow: 0 8px 16px rgba(255, 138, 26, 0.22);
+      }
+      .btn.ghost {
+        background: #fff;
+        color: var(--blue);
+        border: 1.5px solid #d5def8;
+        box-shadow: none;
+      }
+      .btn.danger { background: #e15d55; box-shadow: none; }
+      .btn.good { outline: 3px solid #b7f0d4; }
+      .hint {
+        margin-top: 12px;
+        min-height: 2.6em;
+        font-size: 0.88rem;
+        font-weight: 650;
+      }
+      .hint.ok { color: var(--green); }
+      .hint.no { color: #c2413b; }
+      .quiz { margin-top: 14px; }
+      .quiz button {
+        display: block;
+        width: 100%;
+        text-align: left;
+        margin-top: 8px;
+        border-radius: 12px;
+        border: 1px solid #e6ebf5;
+        background: #fff;
+        padding: 10px 12px;
+        color: var(--text);
+        font-weight: 650;
+      }
+      .quiz button.right { background: #e5f8ee; border-color: #b7e7cd; }
+      .quiz button.wrong { background: #fdecec; border-color: #f3c0bc; }
+      .row-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+      .legend { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+      .legend i {
+        font-style: normal;
+        font-size: 0.75rem;
+        font-weight: 800;
+        border-radius: 999px;
+        padding: 4px 8px;
+      }
+      .lg-o { background: #fff1e0; color: #c56a00; }
+      .lg-b { background: #e8edff; color: #2f49d6; }
+      .lg-r { background: #fdecec; color: #c2413b; }
+      @media (max-width: 980px) {
+        .app { grid-template-columns: 1fr; }
+        .side { position: static; max-height: none; }
+        .layout { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="side">
+        <div class="brand">
+          <div class="mark">R</div>
+          <div>
+            <strong>RACI admin guide</strong>
+            <small>Ranjan Educational Institute</small>
+            <em></em>
+          </div>
+        </div>
+        <label class="search">
+          <input id="q" type="search" placeholder="Search a function…" autocomplete="off" />
+        </label>
+        <div class="progress">
+          Practiced <span id="count">0</span> of <span id="total">0</span>
+          <div class="bar"><i id="bar"></i></div>
+        </div>
+        <nav class="nav" id="nav" aria-label="Functions"></nav>
+      </aside>
+      <main class="stage" id="stage"></main>
+    </div>
+    <script>
+      const GROUPS = [
+        {
+          id: "overview",
+          label: "Overview",
+          items: [
+            {
+              id: "dashboard",
+              title: "Dashboard",
+              path: "/",
+              permission: "Any signed-in staff member",
+              summary:
+                "The home screen is the institute at a glance. It counts learners, published courses, explore sections, and banners, then points at work that is waiting.",
+              learner:
+                "Learners never see this screen. The numbers describe what they can already open in the app.",
+              watch:
+                "A card is a shortcut. Refresh pulls the latest counts. The yellow environment ribbon means this is not production.",
+              quiz: {
+                prompt: "Suspended learners are waiting. Where do you start?",
+                choices: [
+                  { text: "Action queues, then the suspended card", ok: true, why: "The queue names the problem and opens the filtered learner list." },
+                  { text: "Settings, and turn the account provider off", ok: false, why: "Settings does not suspend people. Learners does." },
+                  { text: "Audit log, and delete the event", ok: false, why: "The audit log only records what already happened." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Read the counts",
+                  say: "Hello is the greeting. The four pastel cards are live totals. Click a card to open that list.",
+                  screen: "Dashboard",
+                  blurb: "Learners, courses, explore sections, and banners.",
+                  controls: [
+                    { label: "Learners card", kind: "ghost", correct: true },
+                    { label: "Refresh", kind: "ghost", hint: "Refresh updates the numbers. Open a card when you want the list." },
+                  ],
+                },
+                {
+                  title: "Open a queue",
+                  say: "Action queues list suspended accounts, draft courses, and learners waiting for verification.",
+                  screen: "Action queues",
+                  blurb: "Items that need a person.",
+                  controls: [
+                    { label: "Review learners", kind: "primary", correct: true },
+                    { label: "New course", kind: "ghost", hint: "New course starts content. The queue is for accounts that are already blocked." },
+                  ],
+                },
+                {
+                  title: "Check who changed what",
+                  say: "Recent admin activity shows the latest audit events. Open the full log when you need a name, a time, and an action.",
+                  screen: "Recent admin activity",
+                  blurb: "Latest audit events.",
+                  controls: [
+                    { label: "Open full audit log", kind: "ghost", correct: true },
+                    { label: "Explore", kind: "primary", hint: "Explore jumps to courses. The activity list is the audit shortcut." },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "people",
+          label: "People",
+          items: [
+            {
+              id: "learners",
+              title: "Learners",
+              path: "/learners",
+              permission: "users.read · suspend needs users.suspend",
+              summary:
+                "Find a student, read their enrollments and activity, then suspend or reactivate the account. Search matches name, email, phone, and id.",
+              learner:
+                "A suspended account cannot keep using the learner app. Reactivate restores it.",
+              watch:
+                "Suspend asks you to confirm. The button is red on purpose. Filters for state and batch sit above the table.",
+              quiz: {
+                prompt: "You need the lesson history for one student. What do you click?",
+                choices: [
+                  { text: "The learner's row, then read Activity", ok: true, why: "The row opens the profile, enrollments, and the activity feed." },
+                  { text: "Suspend, so the feed freezes", ok: false, why: "Suspend blocks the account. It is not a way to view history." },
+                  { text: "Reports, and export that one person", ok: false, why: "Reports is an institute snapshot, not one learner's timeline." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Search",
+                  say: "Type a name, email, phone, or id. Use State or Batch when the list is long, and Reset to clear those filters.",
+                  screen: "Learners",
+                  blurb: "Search and manage learner accounts.",
+                  controls: [
+                    { label: "Search the table", kind: "ghost", correct: true },
+                    { label: "Suspend", kind: "danger", hint: "Search first. Suspend is only on the open profile, and only when you mean to block them." },
+                  ],
+                },
+                {
+                  title: "Open the profile",
+                  say: "Click the row. The side panel shows contact, batch, enrollments, and activity such as lessons and tests.",
+                  screen: "Learner profile",
+                  blurb: "Select a learner to inspect activity.",
+                  controls: [
+                    { label: "Open row", kind: "primary", correct: true },
+                    { label: "Reset", kind: "ghost", hint: "Reset clears filters. The profile opens from the row." },
+                  ],
+                },
+                {
+                  title: "Suspend or restore",
+                  say: "Suspend asks for confirmation. Reactivate is the orange button when the account is already suspended.",
+                  screen: "Account actions",
+                  blurb: "Needs users.suspend.",
+                  controls: [
+                    { label: "Reactivate", kind: "primary", correct: true },
+                    { label: "Close the panel", kind: "ghost", hint: "Closing hides the profile. Reactivate is the action that restores access." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "staff",
+              title: "Staff & roles",
+              path: "/staff",
+              permission: "admins.manage",
+              summary:
+                "Add a colleague and give them a role. Deactivate ends their access without deleting the history of what they did.",
+              learner: "Staff accounts are not learner accounts. A learner password will not open this console.",
+              watch: "Only people with admins.manage see this menu. Deactivate is reversible through Activate.",
+              quiz: {
+                prompt: "A teacher left the institute. What should you do with their staff row?",
+                choices: [
+                  { text: "Deactivate the staff account", ok: true, why: "Deactivate stops sign-in and keeps the audit trail attached to their name." },
+                  { text: "Delete them from the audit log", ok: false, why: "The audit log is append-only. You do not erase past actions." },
+                  { text: "Suspend them on the Learners screen", ok: false, why: "Learners and staff are different directories." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Add staff",
+                  say: "Add staff opens a drawer. Enter their name, email, and role, then save. They sign in with the admin login, not the app.",
+                  screen: "Staff & roles",
+                  blurb: "Who can operate the console.",
+                  controls: [
+                    { label: "Add staff", kind: "primary", correct: true },
+                    { label: "Deactivate", kind: "ghost", hint: "Deactivate is for someone already in the table." },
+                  ],
+                },
+                {
+                  title: "Turn access on or off",
+                  say: "Each row shows roles and active or inactive. Deactivate blocks the console. Activate gives it back.",
+                  screen: "Staff table",
+                  blurb: "Roles decide which menus appear.",
+                  controls: [
+                    { label: "Deactivate", kind: "ghost", correct: true },
+                    { label: "Add staff", kind: "primary", hint: "Add staff creates a new person. This step changes someone already listed." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "batches",
+              title: "Batches",
+              path: "/batches",
+              permission: "users.read",
+              summary:
+                "A batch is a cohort: a name, an optional subject, and the learners on the roster. Live classes and filters use this group.",
+              learner: "Learners see content and classes aimed at their batch. They do not edit the roster.",
+              watch: "Edit batch roster is how you change membership. Creating a batch does not enroll anyone in a course by itself.",
+              quiz: {
+                prompt: "You want only one cohort in tomorrow's live class. What do you prepare first?",
+                choices: [
+                  { text: "A batch whose roster is the right students", ok: true, why: "Live classes can target a batch. The roster is maintained here." },
+                  { text: "A coupon named after the cohort", ok: false, why: "Coupons change price. They do not group students." },
+                  { text: "An explore section", ok: false, why: "Explore sections are home-screen links, not class rosters." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Create the batch",
+                  say: "Add batch opens the drawer. Give it a name and a subject if you use one, then Create batch.",
+                  screen: "Batches",
+                  blurb: "Cohorts for classes and filters.",
+                  controls: [
+                    { label: "Add batch", kind: "primary", correct: true },
+                    { label: "Edit roster", kind: "ghost", hint: "Edit roster is for a batch that already exists." },
+                  ],
+                },
+                {
+                  title: "Set the roster",
+                  say: "On the row, Edit roster opens the same drawer with the people picker. Save batch when the names are right.",
+                  screen: "Edit batch roster",
+                  blurb: "Choose the learners in this cohort.",
+                  controls: [
+                    { label: "Save batch", kind: "primary", correct: true },
+                    { label: "Add batch", kind: "ghost", hint: "You are editing. Save batch writes the roster." },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "learning",
+          label: "Learning",
+          items: [
+            {
+              id: "courses",
+              title: "Courses",
+              path: "/courses",
+              permission: "content.edit · publish needs content.publish",
+              summary:
+                "A course is the container learners enroll in. You create a draft with a title and a stable slug, add lessons, then publish it.",
+              learner:
+                "Only a published course can show as available. A draft stays inside the console.",
+              watch:
+                "The slug is the stable address. Renaming the title later is safer than changing the slug, because links and enrollments follow the id.",
+              quiz: {
+                prompt: "The course looks right, but students still cannot see it. What is missing?",
+                choices: [
+                  { text: "Publish, after the draft has lessons", ok: true, why: "Create draft only stores it. Publish is what releases it." },
+                  { text: "A new slug every time you edit the title", ok: false, why: "The slug should stay stable. Publishing changes visibility." },
+                  { text: "An admit card", ok: false, why: "Admit cards are documents. They do not publish a course." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Create a draft",
+                  say: "Create draft asks for a title and a slug. The course is saved as a draft in free mode until you publish.",
+                  screen: "Courses",
+                  blurb: "Create, edit, and publish learning courses.",
+                  controls: [
+                    { label: "Create draft", kind: "primary", correct: true },
+                    { label: "Publish", kind: "ghost", hint: "Publish is on a row that already exists. Start with Create draft." },
+                  ],
+                },
+                {
+                  title: "Add a lesson stub",
+                  say: "Add lesson on the row opens a form. Give the lesson a title and save it. Open Lessons & resources to upload the video or file.",
+                  screen: "Course row",
+                  blurb: "Title, slug, mode, lifecycle, lesson count.",
+                  controls: [
+                    { label: "Add lesson", kind: "ghost", correct: true },
+                    { label: "Create draft", kind: "primary", hint: "Another draft would be a second course. This course needs Add lesson." },
+                  ],
+                },
+                {
+                  title: "Publish",
+                  say: "Publish appears while the lifecycle is not published, and only if you have content.publish. After that, learners can be offered the course.",
+                  screen: "Ready to release",
+                  blurb: "Drafts stay private.",
+                  controls: [
+                    { label: "Publish", kind: "primary", correct: true },
+                    { label: "Add lesson", kind: "ghost", hint: "You can add more lessons later. This step is the release." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "semesters",
+              title: "Semesters",
+              path: "/semesters",
+              permission: "semester.review · approve needs semester.approve",
+              summary:
+                "Certification courses move semester by semester. You add the semester, collect a review, then approve and unlock the next stage or send it back.",
+              learner:
+                "Students see locked, available, in progress, or approved. They cannot approve themselves.",
+              watch:
+                "Approve & unlock is the academic decision. Request changes keeps the semester from advancing.",
+              quiz: {
+                prompt: "The submission is incomplete. Which button matches that decision?",
+                choices: [
+                  { text: "Request changes", ok: true, why: "Request changes sends it back. Approve & unlock moves them forward." },
+                  { text: "Add semester", ok: false, why: "Add semester creates structure. It does not judge a submission." },
+                  { text: "Publish on Courses", ok: false, why: "Course publish releases a catalog item. Semester approval is a learner's progress." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Add the semester",
+                  say: "Add semester defines the next stage on a course: its index and title.",
+                  screen: "Semesters & reviews",
+                  blurb: "Structure first, then the review queue.",
+                  controls: [
+                    { label: "Add semester", kind: "primary", correct: true },
+                    { label: "Approve & unlock", kind: "ghost", hint: "Approval is for a review that is already in the queue." },
+                  ],
+                },
+                {
+                  title: "File the review",
+                  say: "Submit review records that a learner's semester is ready to be judged.",
+                  screen: "Submit semester review",
+                  blurb: "Moves the work into the queue.",
+                  controls: [
+                    { label: "Submit for review", kind: "primary", correct: true },
+                    { label: "Request changes", kind: "ghost", hint: "Request changes is the decision after a review exists." },
+                  ],
+                },
+                {
+                  title: "Decide",
+                  say: "Approve & unlock opens the next stage. Request changes asks the learner to fix the work.",
+                  screen: "Review queue",
+                  blurb: "Needs semester.approve to approve.",
+                  controls: [
+                    { label: "Approve & unlock", kind: "primary", correct: true },
+                    { label: "Add semester", kind: "ghost", hint: "The semester already exists. This step is the decision." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "lessons",
+              title: "Lessons & resources",
+              path: "/lessons",
+              permission: "content.edit",
+              summary:
+                "This is where files and videos attach to lessons. Upload a resource, wait until the video provider is ready, then preview it.",
+              learner:
+                "Learners play a ready video inside the app. The file is not a public link. Download uses a short-lived authorization.",
+              watch:
+                "Preview appears only when the provider status is ready. Until then, use Check status. Mux and Cloudinary are the video providers.",
+              quiz: {
+                prompt: "A video row says it is waiting. What do you press?",
+                choices: [
+                  { text: "Check status, until it becomes ready", ok: true, why: "The provider processes the file. Preview unlocks when status is ready." },
+                  { text: "Publish the course again", ok: false, why: "Publishing the course does not finish video processing." },
+                  { text: "Copy a permanent public URL into the lesson", ok: false, why: "Playback stays authorized and short-lived." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Upload",
+                  say: "Upload resource takes one or more videos, or another file type. Each video gets its own title in the queue.",
+                  screen: "Lessons & resources",
+                  blurb: "Media attached to lessons.",
+                  controls: [
+                    { label: "Upload resource", kind: "primary", correct: true },
+                    { label: "Preview", kind: "ghost", hint: "Nothing is uploaded yet, so there is nothing to preview." },
+                  ],
+                },
+                {
+                  title: "Wait for ready",
+                  say: "The row shows the provider and a status pill. Check status asks the provider again.",
+                  screen: "Resource row",
+                  blurb: "mux or cloudinary, still processing.",
+                  controls: [
+                    { label: "Check status", kind: "primary", correct: true },
+                    { label: "Preview", kind: "ghost", hint: "Preview stays off until the pill says ready." },
+                  ],
+                },
+                {
+                  title: "Preview",
+                  say: "When the pill says ready, Preview opens the player. That is the same asset learners will be authorized to watch.",
+                  screen: "Ready video",
+                  blurb: "Provider status: ready.",
+                  controls: [
+                    { label: "Preview", kind: "primary", correct: true },
+                    { label: "Check status", kind: "ghost", hint: "Status is already ready. Preview is the check that it plays." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "projects",
+              title: "Projects & reviews",
+              path: "/projects",
+              permission: "semester.review · accept needs semester.approve",
+              summary:
+                "Projects are the work products inside a semester. You create the brief, then accept a submission or request changes.",
+              learner: "The learner submits from the app. Accept or request-changes is what they see next.",
+              watch:
+                "Simulate submission is a staff tool for trying the queue. It is not the learner's button.",
+              quiz: {
+                prompt: "You want to see the review buttons before a real student submits. What do you use?",
+                choices: [
+                  { text: "Simulate submission", ok: true, why: "That files a practice submission so Accept and Request changes can be tried." },
+                  { text: "Issue an admit card", ok: false, why: "Admit cards are documents, not project work." },
+                  { text: "Force submit on Attempts", ok: false, why: "Attempts belong to tests, not project files." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Write the project",
+                  say: "Create project stores the brief learners must complete.",
+                  screen: "Projects & reviews",
+                  blurb: "Briefs and the submission queue.",
+                  controls: [
+                    { label: "Create project", kind: "primary", correct: true },
+                    { label: "Accept", kind: "ghost", hint: "Accept is for a submission. Create the brief first." },
+                  ],
+                },
+                {
+                  title: "Try the queue",
+                  say: "Simulate submission drops a sample into the queue so you can practice the decision.",
+                  screen: "Practice queue",
+                  blurb: "Staff-only sample, not a student tap.",
+                  controls: [
+                    { label: "Simulate submission", kind: "ghost", correct: true },
+                    { label: "Create project", kind: "primary", hint: "The project exists. This step fills the queue." },
+                  ],
+                },
+                {
+                  title: "Decide",
+                  say: "Accept closes the submission as approved. Request changes sends it back with more work to do.",
+                  screen: "Submission",
+                  blurb: "Needs semester.approve to accept.",
+                  controls: [
+                    { label: "Accept", kind: "primary", correct: true },
+                    { label: "Simulate submission", kind: "ghost", hint: "Another sample is optional. Accept is the decision." },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "assessments",
+          label: "Assessments",
+          items: [
+            {
+              id: "questions",
+              title: "Question bank",
+              path: "/questions",
+              permission: "assessments.author · approve needs assessments.publish",
+              summary:
+                "Questions live in the bank before they belong to a test. Add the question, then Approve it so a publisher can place it on a paper.",
+              learner: "Students never see the bank. They see questions only inside a published test.",
+              watch: "An unapproved question should not be treated as ready for a live paper.",
+              quiz: {
+                prompt: "A new question is saved. What makes it usable on a test?",
+                choices: [
+                  { text: "Approve, then assign it on the Tests screen", ok: true, why: "Approval is the bank's release. Assignment attaches it to a paper." },
+                  { text: "Publish a course", ok: false, why: "Courses and questions are separate releases." },
+                  { text: "Start an attempt", ok: false, why: "An attempt needs a published test that already has questions." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Add the question",
+                  say: "Add question opens the drawer. Save it into the bank. It is not on a test yet.",
+                  screen: "Question bank",
+                  blurb: "Author first, approve second.",
+                  controls: [
+                    { label: "Add question", kind: "primary", correct: true },
+                    { label: "Approve", kind: "ghost", hint: "Approve is on a row. Add the question before that." },
+                  ],
+                },
+                {
+                  title: "Approve it",
+                  say: "Approve shows while the status is not approved, and only with assessments.publish.",
+                  screen: "Question row",
+                  blurb: "Ready for a paper.",
+                  controls: [
+                    { label: "Approve", kind: "primary", correct: true },
+                    { label: "Add question", kind: "ghost", hint: "This question is already in the bank." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "tests",
+              title: "Tests",
+              path: "/tests",
+              permission: "assessments.author · publish needs assessments.publish",
+              summary:
+                "A test is a draft until it has questions and you publish it. Assign questions pulls approved items from the bank.",
+              learner: "A published test can appear in the app. A draft cannot be started by learners.",
+              watch: "The row shows how many questions are assigned against the count you set, plus the max score.",
+              quiz: {
+                prompt: "The draft exists but the question count is 0. What is the next click?",
+                choices: [
+                  { text: "Assign questions", ok: true, why: "Assign questions opens the picker and saves the set onto the test." },
+                  { text: "Publish immediately", ok: false, why: "Publishing an empty paper does not give learners anything to answer." },
+                  { text: "Force submit & score", ok: false, why: "That button is on Attempts, after someone has started." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Create the draft",
+                  say: "Create draft stores the test title and scoring setup. Learners still cannot open it.",
+                  screen: "Tests",
+                  blurb: "Drafts, question counts, max score.",
+                  controls: [
+                    { label: "Create draft", kind: "primary", correct: true },
+                    { label: "Publish", kind: "ghost", hint: "Publish comes after questions are assigned." },
+                  ],
+                },
+                {
+                  title: "Assign questions",
+                  say: "Assign questions opens a picker. Choose the bank items, then save. The row count should match.",
+                  screen: "Assign questions",
+                  blurb: "Pull from the approved bank.",
+                  controls: [
+                    { label: "Assign questions", kind: "ghost", correct: true },
+                    { label: "Create draft", kind: "primary", hint: "The draft is already there. Fill it." },
+                  ],
+                },
+                {
+                  title: "Publish the paper",
+                  say: "Publish releases the test. Attempts can then be started against it.",
+                  screen: "Ready paper",
+                  blurb: "Lifecycle moves to published.",
+                  controls: [
+                    { label: "Publish", kind: "primary", correct: true },
+                    { label: "Assign questions", kind: "ghost", hint: "You can still edit the set later. This step releases the paper." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "attempts",
+              title: "Attempts",
+              path: "/attempts",
+              permission: "results.read",
+              summary:
+                "An attempt is one sitting of a published test. Staff can start one, then Force submit & score if it is still in progress.",
+              learner: "Learners start their own attempt in the app. This screen is the operator view of those sittings.",
+              watch: "Force submit & score is for created or in-progress attempts. A finished attempt already has a score.",
+              quiz: {
+                prompt: "An attempt has been open too long and must be closed. Which control does that?",
+                choices: [
+                  { text: "Force submit & score", ok: true, why: "It closes an in-progress attempt and writes the score." },
+                  { text: "Start attempt, again", ok: false, why: "Start attempt opens another sitting. It does not close this one." },
+                  { text: "Pause on Banners", ok: false, why: "Pause only hides a home banner." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Start a sitting",
+                  say: "Start attempt asks for a published test and the learner. Use it when you are recording a sitting from the console.",
+                  screen: "Attempts",
+                  blurb: "One row per sitting.",
+                  controls: [
+                    { label: "Start attempt", kind: "primary", correct: true },
+                    { label: "Force submit & score", kind: "ghost", hint: "There is no open sitting yet." },
+                  ],
+                },
+                {
+                  title: "Close and score",
+                  say: "While status is created or in progress, Force submit & score finishes it. The score then shows on the row and can be published under Results.",
+                  screen: "In progress",
+                  blurb: "Score appears after submit.",
+                  controls: [
+                    { label: "Force submit & score", kind: "primary", correct: true },
+                    { label: "Start attempt", kind: "ghost", hint: "Starting again would open a second sitting." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "results",
+              title: "Results",
+              path: "/results",
+              permission: "results.read · publish needs assessments.publish",
+              summary:
+                "Results holds the score, the percentage, and whether the learner passed. Publish is what makes that result visible.",
+              learner: "Until you publish, the result stays off their results list.",
+              watch: "The table already shows raw score, max score, and pass or fail. Publish changes visibility, not the arithmetic.",
+              quiz: {
+                prompt: "The score is correct but the student says they cannot see it. What do you do?",
+                choices: [
+                  { text: "Publish that result", ok: true, why: "Unpublished results stay in the console." },
+                  { text: "Delete the attempt and guess a new score", ok: false, why: "The score is already calculated. Publish releases it." },
+                  { text: "Issue a certificate from this screen", ok: false, why: "Certificates are a separate documents screen." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Find the row",
+                  say: "Each row is a learner, a test, a score, and a published or unpublished pill.",
+                  screen: "Results",
+                  blurb: "Score first, visibility second.",
+                  controls: [
+                    { label: "Open the unpublished row", kind: "ghost", correct: true },
+                    { label: "Publish a course", kind: "primary", hint: "Course publish does not release a test score." },
+                  ],
+                },
+                {
+                  title: "Publish the result",
+                  say: "Publish shows only when the result is still unpublished and you have assessments.publish.",
+                  screen: "Unpublished result",
+                  blurb: "The learner can then see the score.",
+                  controls: [
+                    { label: "Publish", kind: "primary", correct: true },
+                    { label: "Force submit & score", kind: "ghost", hint: "Scoring already happened. This step is visibility." },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "live",
+          label: "Live classes",
+          items: [
+            {
+              id: "live",
+              title: "Live classes",
+              path: "/live-classes",
+              permission: "live.schedule",
+              summary:
+                "Schedule a class for a batch or for specific students, then request a Daily room. The join link is what people open.",
+              learner:
+                "The app lists the class on the day you set. Join works after the room exists.",
+              watch:
+                "Save draft stores the schedule. Request room creates the link. Refresh room asks Daily for a new one if the link must be replaced.",
+              quiz: {
+                prompt: "The class is on the calendar but the join column is empty. What do you click?",
+                choices: [
+                  { text: "Request room", ok: true, why: "The draft has a time. Request room asks Daily for the join link." },
+                  { text: "Publish the course", ok: false, why: "A live class is not a course publish." },
+                  { text: "Send a notification first", ok: false, why: "A reminder can come later. The room is what creates the link." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Schedule",
+                  say: "Schedule class asks for a title, start, end, and either a batch or selected learners. Save draft stores it.",
+                  screen: "Live classes",
+                  blurb: "Pick a batch or specific students.",
+                  controls: [
+                    { label: "Schedule class", kind: "primary", correct: true },
+                    { label: "Request room", kind: "ghost", hint: "The row does not exist until you save the draft." },
+                  ],
+                },
+                {
+                  title: "Request the room",
+                  say: "Request room calls Daily. When it succeeds, the join column becomes Open.",
+                  screen: "Scheduled row",
+                  blurb: "No join link yet.",
+                  controls: [
+                    { label: "Request room", kind: "ghost", correct: true },
+                    { label: "Schedule class", kind: "primary", hint: "Scheduling again creates another class. This row needs a room." },
+                  ],
+                },
+                {
+                  title: "Replace a bad link",
+                  say: "If a link already exists and must be renewed, the same button reads Refresh room.",
+                  screen: "Room ready",
+                  blurb: "Open jumps to the provider.",
+                  controls: [
+                    { label: "Refresh room", kind: "ghost", correct: true },
+                    { label: "Open", kind: "primary", hint: "Open joins. Refresh room is how staff replace the link." },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "content",
+          label: "Content",
+          items: [
+            {
+              id: "explore",
+              title: "Explore sections",
+              path: "/explore",
+              permission: "explore.manage",
+              summary:
+                "Explore sections are the tiles on the learner home, such as Computer Courses. You draft one, point it at a target, publish it, and can rename the label without breaking the link.",
+              learner: "Published sections show under Explore. Drafts do not.",
+              watch: "Rename changes the words students read. The slug stays put so old links keep working.",
+              quiz: {
+                prompt: "The tile should say Competitive Exams, but the link must stay the same. What do you use?",
+                choices: [
+                  { text: "Rename", ok: true, why: "Rename edits the display title and leaves the stable slug alone." },
+                  { text: "Create a second section and delete the slug", ok: false, why: "A new section is a new destination. Rename keeps this one." },
+                  { text: "Pause a banner", ok: false, why: "Banners and explore tiles are different slots on the home screen." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Create the draft",
+                  say: "Create draft sets the title, order, and where the tile should open.",
+                  screen: "Explore sections",
+                  blurb: "Home tiles with a stable slug.",
+                  controls: [
+                    { label: "Create draft", kind: "primary", correct: true },
+                    { label: "Rename", kind: "ghost", hint: "Rename needs a section that is already saved." },
+                  ],
+                },
+                {
+                  title: "Publish the tile",
+                  say: "Publish puts it on the learner home. Until then the lifecycle stays a draft.",
+                  screen: "Section row",
+                  blurb: "Sort order, title, slug, target.",
+                  controls: [
+                    { label: "Publish", kind: "primary", correct: true },
+                    { label: "Rename", kind: "ghost", hint: "You can rename after publishing too. This step makes it visible." },
+                  ],
+                },
+                {
+                  title: "Rename safely",
+                  say: "Rename asks for a new display title. Confirm only when the words should change.",
+                  screen: "Published tile",
+                  blurb: "The slug does not change.",
+                  controls: [
+                    { label: "Rename", kind: "ghost", correct: true },
+                    { label: "Create draft", kind: "primary", hint: "A new draft would be a second tile." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "banners",
+              title: "Home banners",
+              path: "/banners",
+              permission: "banners.manage",
+              summary:
+                "Banners are the promotional cards on the learner home. Draft one with a campaign, placement, priority, and click target, then publish or pause it.",
+              learner: "A published banner is visible. Pause takes it off without deleting the campaign.",
+              watch: "Priority decides which banner wins when several are published. The target is where the tap goes.",
+              quiz: {
+                prompt: "A festival offer should disappear tonight but be easy to bring back. What do you click?",
+                choices: [
+                  { text: "Pause", ok: true, why: "Pause unpublishes the placement and leaves the banner ready to publish again." },
+                  { text: "Rename an explore section", ok: false, why: "That changes a tile label, not this banner." },
+                  { text: "Revoke a certificate", ok: false, why: "Revoke is for an issued document." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Create the draft",
+                  say: "Create draft stores the campaign name, title, placement, priority, and the target the banner opens.",
+                  screen: "Home banners",
+                  blurb: "Schedule and publish learner home placements.",
+                  controls: [
+                    { label: "Create draft", kind: "primary", correct: true },
+                    { label: "Pause", kind: "ghost", hint: "Pause is for a banner that is already published." },
+                  ],
+                },
+                {
+                  title: "Publish",
+                  say: "Publish shows while it is not live. Learners then see it in that placement.",
+                  screen: "Banner draft",
+                  blurb: "Placement and priority are on the row.",
+                  controls: [
+                    { label: "Publish", kind: "primary", correct: true },
+                    { label: "Create draft", kind: "ghost", hint: "This banner is the one you want on the home screen." },
+                  ],
+                },
+                {
+                  title: "Pause",
+                  say: "Once it is published, the button switches to Pause. Use that to take it down.",
+                  screen: "Live banner",
+                  blurb: "Pause keeps the record.",
+                  controls: [
+                    { label: "Pause", kind: "ghost", correct: true },
+                    { label: "Publish", kind: "primary", hint: "It is already published. Pause is the take-down." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "news",
+              title: "News",
+              path: "/news",
+              permission: "content.edit · publish needs content.publish",
+              summary: "Institute news items. Save a draft with a title, category, and body, then publish the row.",
+              learner: "Published news shows in the learner app's news area. Drafts stay in the console.",
+              watch: "The same draft-then-publish pattern is used for awareness, facts, and interview prep.",
+              quiz: {
+                prompt: "A news item is saved. Students do not see it. Why?",
+                choices: [
+                  { text: "It is still a draft until you publish the row", ok: true, why: "Save draft writes the article. Publish releases it." },
+                  { text: "News only appears after a live class ends", ok: false, why: "News does not wait on a class." },
+                  { text: "You must also create a product", ok: false, why: "Products are the catalog. News is editorial." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Save the draft",
+                  say: "Save draft asks for a title, an optional category, and the body.",
+                  screen: "News",
+                  blurb: "Institute news shown in the learner app.",
+                  controls: [
+                    { label: "Save draft", kind: "primary", correct: true },
+                    { label: "Publish", kind: "ghost", hint: "Publish is on the row after the draft exists." },
+                  ],
+                },
+                {
+                  title: "Publish the story",
+                  say: "Publish on the row changes the lifecycle. Filter the table by lifecycle or category when the list grows.",
+                  screen: "News row",
+                  blurb: "Drafts are hidden from the app.",
+                  controls: [
+                    { label: "Publish", kind: "primary", correct: true },
+                    { label: "Save draft", kind: "ghost", hint: "Another draft would be a second story." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "awareness",
+              title: "General awareness",
+              path: "/awareness",
+              permission: "content.edit · publish needs content.publish",
+              summary: "Short awareness pieces: pairs, lists, and articles. Draft them, categorize them, and publish the ones that should be public.",
+              learner: "Published items show in General awareness. Categories help the app group them.",
+              watch: "Search matches title and category. An empty category is allowed, but a category makes the library easier to browse.",
+              quiz: {
+                prompt: "Where does a published awareness article go?",
+                choices: [
+                  { text: "The learner app's general awareness section", ok: true, why: "This screen feeds that section only." },
+                  { text: "The question bank", ok: false, why: "Questions are authored on their own screen." },
+                  { text: "The audit log", ok: false, why: "Publishing writes an audit event, but the article itself is content." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Draft the piece",
+                  say: "Save draft with a title, category, and body. It stays unpublished.",
+                  screen: "General awareness",
+                  blurb: "Pairs, lists, and short articles.",
+                  controls: [
+                    { label: "Save draft", kind: "primary", correct: true },
+                    { label: "Publish", kind: "ghost", hint: "The draft has to exist before the row can be published." },
+                  ],
+                },
+                {
+                  title: "Publish",
+                  say: "Publish releases that row. Use the category filter to check everything in one topic.",
+                  screen: "Awareness row",
+                  blurb: "Category groups the library.",
+                  controls: [
+                    { label: "Publish", kind: "primary", correct: true },
+                    { label: "Save draft", kind: "ghost", hint: "This step releases the piece you already wrote." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "facts",
+              title: "Amazing facts",
+              path: "/facts",
+              permission: "content.edit · publish needs content.publish",
+              summary: "Fact cards grouped by category. Write the fact as a draft, then publish the card.",
+              learner: "Published facts show as fact cards in the app.",
+              watch: "Keep one fact to one card. A category such as Science lets you filter the table the way the app groups them.",
+              quiz: {
+                prompt: "You fixed a typo in a fact that is already public. What is the safe habit?",
+                choices: [
+                  { text: "Edit through a new draft of the corrected card and publish that version", ok: true, why: "The console's editorial flow is draft, then publish. Learners see the published card." },
+                  { text: "Change it only in a notification", ok: false, why: "A notification is a message. The fact card would stay wrong." },
+                  { text: "Hide the whole explore section", ok: false, why: "That would remove a home tile, not correct one fact." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Save the card",
+                  say: "Save draft stores the title, category, and the fact body.",
+                  screen: "Amazing facts",
+                  blurb: "Fact cards grouped by category.",
+                  controls: [
+                    { label: "Save draft", kind: "primary", correct: true },
+                    { label: "Publish", kind: "ghost", hint: "Publish comes after the card exists." },
+                  ],
+                },
+                {
+                  title: "Publish the card",
+                  say: "Publish on the row is what learners can open.",
+                  screen: "Fact row",
+                  blurb: "Filter by category to review a group.",
+                  controls: [
+                    { label: "Publish", kind: "primary", correct: true },
+                    { label: "Save draft", kind: "ghost", hint: "The card is ready. Publish it." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "interview",
+              title: "Interview prep",
+              path: "/interview",
+              permission: "content.edit · publish needs content.publish",
+              summary: "Interview questions and the categories they belong to. Draft the prompt and the answer, then publish.",
+              learner: "Published prompts show in interview preparation. Drafts do not.",
+              watch: "Use the category for the role or topic, so the table filter matches how students browse.",
+              quiz: {
+                prompt: "An interview answer is not ready for students. What state should it stay in?",
+                choices: [
+                  { text: "Draft", ok: true, why: "Save draft keeps it in the console. Publish is the release." },
+                  { text: "Published, with a note in Support", ok: false, why: "Published means learners can read it. Support is the wrong hiding place." },
+                  { text: "Paused banner", ok: false, why: "Banners do not store interview answers." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Write the draft",
+                  say: "Save draft with the question as the title, a category, and the model answer in the body.",
+                  screen: "Interview prep",
+                  blurb: "Interview questions and categories.",
+                  controls: [
+                    { label: "Save draft", kind: "primary", correct: true },
+                    { label: "Publish", kind: "ghost", hint: "Hold publish until the answer is the one students should read." },
+                  ],
+                },
+                {
+                  title: "Publish when it is ready",
+                  say: "Publish releases that prompt. Leave weaker answers as drafts.",
+                  screen: "Interview row",
+                  blurb: "Only published prompts are in the app.",
+                  controls: [
+                    { label: "Publish", kind: "primary", correct: true },
+                    { label: "Save draft", kind: "ghost", hint: "This step is the release of a finished prompt." },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "commerce",
+          label: "Commerce",
+          items: [
+            {
+              id: "products",
+              title: "Products & pricing",
+              path: "/products",
+              permission: "payments.read",
+              summary:
+                "The catalog. Each product has an SKU, a title, and a price stored in paise. ₹100 is entered as 10000.",
+              learner:
+                "Learners can see a product, but checkout stays pending until a payment provider is configured.",
+              watch: "Do not type rupees in the price field. The field is paise. The table shows the rupee conversion.",
+              quiz: {
+                prompt: "The course should cost ₹499. What do you type for price?",
+                choices: [
+                  { text: "49900", ok: true, why: "The field is paise. 499 rupees is 49900 paise." },
+                  { text: "499", ok: false, why: "499 paise is ₹4.99." },
+                  { text: "₹499", ok: false, why: "The field is a number of paise, not a currency string." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Add the product",
+                  say: "The create drawer asks for SKU, title, and price in paise. Save stores the catalog row.",
+                  screen: "Products & pricing",
+                  blurb: "Checkout stays pending until a provider is configured.",
+                  controls: [
+                    { label: "Save", kind: "primary", correct: true },
+                    { label: "Reconcile", kind: "ghost", hint: "Reconcile is on Orders, after a payment reference exists." },
+                  ],
+                },
+                {
+                  title: "Read the price back",
+                  say: "The table shows rupees, so 49900 paise displays as ₹499.00. The lifecycle column shows whether the product is a draft or published.",
+                  screen: "Catalog row",
+                  blurb: "SKU, title, rupee price, state.",
+                  controls: [
+                    { label: "Check the rupee column", kind: "ghost", correct: true },
+                    { label: "Request refund", kind: "danger", hint: "Nothing has been paid yet. This step is only the price check." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "coupons",
+              title: "Coupons",
+              path: "/coupons",
+              permission: "payments.read",
+              summary: "Discount codes used when a person reviews an order by hand. You set a code and a percent off.",
+              learner: "A code does nothing until an order review applies it. There is no automatic checkout discount while payments are pending.",
+              watch: "Percent off is a number, not a rupee amount. Inactive codes should not be handed to students.",
+              quiz: {
+                prompt: "A code should take 10% off during manual review. Which fields matter?",
+                choices: [
+                  { text: "Code and percent off", ok: true, why: "Those are the two fields the coupon form stores." },
+                  { text: "SKU and price in paise", ok: false, why: "Those belong to a product, not a coupon." },
+                  { text: "Campaign name and banner priority", ok: false, why: "That is a home banner." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Create the code",
+                  say: "Save a code such as DIWALI10 and a percent off such as 10.",
+                  screen: "Coupons",
+                  blurb: "Discount codes applied during manual order review.",
+                  controls: [
+                    { label: "Save", kind: "primary", correct: true },
+                    { label: "Create order", kind: "ghost", hint: "The order comes later. The code has to exist first." },
+                  ],
+                },
+                {
+                  title: "Confirm it is active",
+                  say: "The table shows the code, the percent, and whether it is active or inactive. Use an active code when you review an order.",
+                  screen: "Coupon row",
+                  blurb: "Inactive codes should not be shared.",
+                  controls: [
+                    { label: "Read the state column", kind: "ghost", correct: true },
+                    { label: "Reconcile", kind: "primary", hint: "Reconcile closes a payment. It does not create a coupon." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "orders",
+              title: "Orders",
+              path: "/orders",
+              permission: "payments.read",
+              summary:
+                "Create a pending order, then reconcile it when you have a payment reference of at least 4 characters. The gateway is not assumed to be live.",
+              learner: "A pending order does not grant the course. Reconcile is the staff step that records the payment you have checked.",
+              watch: "Reconcile stays disabled until the reference box has 4 or more characters. That reference is the note you are matching.",
+              quiz: {
+                prompt: "The student paid outside the app and sent a receipt number. What do you do?",
+                choices: [
+                  { text: "Create the pending order, enter the reference, then Reconcile", ok: true, why: "The order is the record. Reconcile attaches the reference you verified." },
+                  { text: "Publish the course again", ok: false, why: "Publishing does not record this person's payment." },
+                  { text: "Issue a certificate", ok: false, why: "A certificate is not a payment record." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Create the pending order",
+                  say: "Create order picks the product and the learner. It is stored as pending.",
+                  screen: "Orders & payments",
+                  blurb: "Amount is shown in rupees.",
+                  controls: [
+                    { label: "Create order", kind: "primary", correct: true },
+                    { label: "Reconcile", kind: "ghost", hint: "Reconcile needs an order and a reference." },
+                  ],
+                },
+                {
+                  title: "Enter a reference",
+                  say: "Type the receipt or transfer id. Fewer than 4 characters leaves Reconcile disabled.",
+                  screen: "Pending order",
+                  blurb: "Reference must be at least 4 characters.",
+                  controls: [
+                    { label: "Type the reference", kind: "ghost", correct: true },
+                    { label: "Request refund", kind: "danger", hint: "You have not confirmed the payment yet." },
+                  ],
+                },
+                {
+                  title: "Reconcile",
+                  say: "Reconcile records that you matched this order to that reference. It does not call a card network by itself.",
+                  screen: "Ready to match",
+                  blurb: "Provider status stays visible on the row.",
+                  controls: [
+                    { label: "Reconcile", kind: "primary", correct: true },
+                    { label: "Create order", kind: "ghost", hint: "A second order would double-charge the record." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "refunds",
+              title: "Refunds",
+              path: "/refunds",
+              permission: "payments.refund_approve",
+              summary:
+                "Request a refund against an order. Approval is written in RACI. The payment gateway is not called from this screen.",
+              learner: "The learner's access should be reviewed after you record the refund. The button does not move money at the bank.",
+              watch: "Tell finance the gateway was not contacted. This row is the institute's decision, not a bank receipt.",
+              quiz: {
+                prompt: "You click Request refund and approve it. What has happened?",
+                choices: [
+                  { text: "RACI stored the refund decision. The gateway was not called.", ok: true, why: "The screen says approval is recorded manually." },
+                  { text: "The bank has already returned the money", ok: false, why: "This console does not call the payment gateway here." },
+                  { text: "The course draft was deleted", ok: false, why: "Refunds do not delete catalog items." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Open a request",
+                  say: "Request refund asks which order and why. Save the request into the queue.",
+                  screen: "Refunds",
+                  blurb: "Approval is recorded manually.",
+                  controls: [
+                    { label: "Request refund", kind: "primary", correct: true },
+                    { label: "Reconcile", kind: "ghost", hint: "Reconcile is the payment match on Orders." },
+                  ],
+                },
+                {
+                  title: "Record the decision",
+                  say: "Approve the row when the institute agrees to the refund. Follow up outside RACI if the bank transfer still has to be made.",
+                  screen: "Refund queue",
+                  blurb: "The gateway is not called.",
+                  controls: [
+                    { label: "Approve the refund record", kind: "primary", correct: true },
+                    { label: "Pause banner", kind: "ghost", hint: "A banner is unrelated to this payment decision." },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "comms",
+          label: "Communications",
+          items: [
+            {
+              id: "notifications",
+              title: "Notifications",
+              path: "/notifications",
+              permission: "notifications.send_single",
+              summary:
+                "Campaigns are drafts with a title, a body, and an audience. Send tries to deliver them. Nothing is actually pushed until a push provider is configured.",
+              learner: "When a provider is connected, Send is what lands in the notification inbox. Until then the campaign stays unsent.",
+              watch: "Check Settings for whether the push provider is configured before you promise students a message went out.",
+              quiz: {
+                prompt: "Send was clicked and the provider status is still not configured. Did the phone buzz?",
+                choices: [
+                  { text: "No. Delivery waits for a push provider.", ok: true, why: "The campaign can be saved and marked, but push needs the provider in Settings." },
+                  { text: "Yes. Send always reaches every phone", ok: false, why: "Send cannot reach a device with no provider." },
+                  { text: "Only if the course is free", ok: false, why: "Price has nothing to do with push delivery." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Draft the campaign",
+                  say: "New campaign, then Save draft. Set the title, the message, and who it is for.",
+                  screen: "Notifications",
+                  blurb: "Send stays unsent until a push provider is configured.",
+                  controls: [
+                    { label: "New campaign", kind: "primary", correct: true },
+                    { label: "Send", kind: "ghost", hint: "Send is on a saved row." },
+                  ],
+                },
+                {
+                  title: "Send",
+                  say: "Send on the row hands the campaign to delivery. If no provider is configured, it will not reach phones.",
+                  screen: "Campaign row",
+                  blurb: "Audience and provider status are both visible.",
+                  controls: [
+                    { label: "Send", kind: "ghost", correct: true },
+                    { label: "New campaign", kind: "primary", hint: "The campaign already exists. Send is the delivery attempt." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "templates",
+              title: "Notification templates",
+              path: "/notification-templates",
+              permission: "notifications.send_single",
+              summary:
+                "Reusable messages with a key, a title, and a body. Each save is a version. Delivery still needs a push provider.",
+              learner: "A template is not a message by itself. A campaign or a later automation uses it.",
+              watch: "The key is the stable name other features look up. Changing the title does not change the key.",
+              quiz: {
+                prompt: "You want every class reminder to start from the same wording. Where do you store that wording?",
+                choices: [
+                  { text: "A notification template, with a stable key", ok: true, why: "Templates are versioned message text. Campaigns are individual sends." },
+                  { text: "An explore section", ok: false, why: "Explore is a home tile, not message text." },
+                  { text: "The audit log", ok: false, why: "The log records actions. It is not a template library." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Save the template",
+                  say: "Enter a key, a title, and a body, then Save. The version number increases when the text changes.",
+                  screen: "Notification templates",
+                  blurb: "Versioned message templates.",
+                  controls: [
+                    { label: "Save", kind: "primary", correct: true },
+                    { label: "Send", kind: "ghost", hint: "Send lives on a campaign. This screen only stores the wording." },
+                  ],
+                },
+                {
+                  title: "Use the key later",
+                  say: "When you write a campaign, reuse this key's wording instead of retyping the reminder.",
+                  screen: "Template row",
+                  blurb: "Key, title, version.",
+                  controls: [
+                    { label: "Note the key", kind: "ghost", correct: true },
+                    { label: "Request room", kind: "primary", hint: "A live room is unrelated to message text." },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "documents",
+          label: "Documents",
+          items: [
+            {
+              id: "certificates",
+              title: "Certificates",
+              path: "/certificates",
+              permission: "documents.issue",
+              summary:
+                "Issue a certificate for a learner. RACI stores an encrypted PDF key. There is no public download link on this screen.",
+              learner:
+                "The student opens their document from the app. If you revoke it, the app must stop treating it as valid.",
+              watch: "Revoke is red. Use it when the certificate should no longer be trusted. Issue does not email a public URL.",
+              quiz: {
+                prompt: "A certificate was issued to the wrong student. What do you do on this screen?",
+                choices: [
+                  { text: "Revoke it, then issue the correct one", ok: true, why: "Revoke marks the bad document. A new Issue creates the right record." },
+                  { text: "Publish it again from Courses", ok: false, why: "Course publish does not fix a named certificate." },
+                  { text: "Paste the PDF into a banner", ok: false, why: "Banners are not a document vault, and the PDF is not public." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Issue",
+                  say: "Issue document asks for the learner and the certificate title. Issue stores the encrypted key.",
+                  screen: "Certificates",
+                  blurb: "No public download link is created.",
+                  controls: [
+                    { label: "Issue document", kind: "primary", correct: true },
+                    { label: "Revoke", kind: "danger", hint: "Revoke is for a document that already exists." },
+                  ],
+                },
+                {
+                  title: "Find it later",
+                  say: "Search by title, serial, or learner name. The status pill shows issued, revoked, or superseded.",
+                  screen: "Certificate row",
+                  blurb: "Serial and learner are on the row.",
+                  controls: [
+                    { label: "Search the serial", kind: "ghost", correct: true },
+                    { label: "Create a coupon", kind: "primary", hint: "A coupon does not prove this certificate." },
+                  ],
+                },
+                {
+                  title: "Revoke a bad copy",
+                  say: "Revoke marks that file untrusted. Issue a new one if the learner should still receive a certificate.",
+                  screen: "Issued certificate",
+                  blurb: "Revoke is destructive.",
+                  controls: [
+                    { label: "Revoke", kind: "danger", correct: true },
+                    { label: "Issue document", kind: "primary", hint: "Issuing again without revoking leaves the wrong certificate in force." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "admit",
+              title: "Admit cards",
+              path: "/admit-cards",
+              permission: "documents.issue",
+              summary:
+                "Same issuance desk as certificates, for admit cards. Issue stores an encrypted PDF key and a serial the learner can open in the app.",
+              learner: "The admit card appears under their documents. A revoked card must not be treated as permission to sit.",
+              watch: "Search includes the serial. That serial is the number you read back to a student on the phone.",
+              quiz: {
+                prompt: "A student cannot find today's hall ticket in the app. What do you check first?",
+                choices: [
+                  { text: "Whether an admit card was issued for them, and that it is not revoked", ok: true, why: "The app lists issued documents. A missing or revoked card will not open as valid." },
+                  { text: "Whether a banner is paused", ok: false, why: "A banner does not hold the hall ticket." },
+                  { text: "The question bank", ok: false, why: "Questions are not admit cards." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Issue the card",
+                  say: "Issue document for the learner and the exam sitting. The serial is stored with the encrypted file key.",
+                  screen: "Admit cards",
+                  blurb: "Same protection as certificates.",
+                  controls: [
+                    { label: "Issue document", kind: "primary", correct: true },
+                    { label: "Revoke", kind: "danger", hint: "Nothing has been issued yet." },
+                  ],
+                },
+                {
+                  title: "Read the serial back",
+                  say: "Search the learner. Confirm the status is issued and note the serial if they ask which card is current.",
+                  screen: "Admit card row",
+                  blurb: "Status, serial, learner.",
+                  controls: [
+                    { label: "Search the learner", kind: "ghost", correct: true },
+                    { label: "Force submit & score", kind: "primary", hint: "That scores a test attempt. It does not issue a hall ticket." },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "operations",
+          label: "Operations",
+          items: [
+            {
+              id: "legal",
+              title: "Legal pages",
+              path: "/legal",
+              permission: "Any signed-in staff member can read. content.edit saves a draft. content.publish replaces the public page.",
+              summary:
+                "Privacy, terms, refunds, cancellation, cookies, disclaimer, acceptable use, and grievance. The public site and the learner app read the latest published version at /policies and /api/legal/{slug}.",
+              learner:
+                "Students and anyone who is not signed in can open the same text from the sign-in page. A draft is not what they see.",
+              watch:
+                "Editing a published version saves a new draft. The live page stays the old text until you publish the draft. Publishing retires the previous public version of that slug.",
+              quiz: {
+                prompt: "You correct a sentence in the published Privacy Policy and click Save draft. What does the public page show?",
+                choices: [
+                  { text: "The previous published text, until you publish the draft", ok: true, why: "Save on a live page writes the next version as a draft. Publish is what replaces /policies/privacy." },
+                  { text: "The new sentence immediately", ok: false, why: "The public route only returns the published version." },
+                  { text: "Nothing. Saving deletes the privacy page", ok: false, why: "The published row stays in place. The draft is an extra version." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Open the public copy",
+                  say: "Legal pages lists every version. View opens /policies/{slug}, the same page linked from sign-in.",
+                  screen: "Legal pages",
+                  blurb: "Privacy, terms, refunds, and the rest.",
+                  controls: [
+                    { label: "View", kind: "ghost", correct: true },
+                    { label: "Publish", kind: "primary", hint: "Publish replaces the live text. Read it first." },
+                  ],
+                },
+                {
+                  title: "Save a draft",
+                  say: "Edit the published row, change the body, and save. That stores a new draft and leaves the public page as it was.",
+                  screen: "Privacy Policy",
+                  blurb: "Saving a published page does not change the live text.",
+                  controls: [
+                    { label: "Save draft", kind: "primary", correct: true },
+                    { label: "Publish", kind: "ghost", hint: "Publish comes after you have read the draft." },
+                  ],
+                },
+                {
+                  title: "Publish the replacement",
+                  say: "Publish on the draft. That version becomes the public page and the older published version is retired.",
+                  screen: "Draft row",
+                  blurb: "One published version per slug.",
+                  controls: [
+                    { label: "Publish", kind: "primary", correct: true },
+                    { label: "New page", kind: "ghost", hint: "A second privacy slug would be a different notice, not a new version." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "support",
+              title: "Support",
+              path: "/support",
+              permission: "Any signed-in staff member",
+              summary: "Open a case for a learner problem, keep it in the queue, and close it when the issue is finished.",
+              learner: "Students may write from the app. This queue is where staff own the reply and the outcome.",
+              watch: "Close is for a solved case. Opening a second case for the same issue makes the queue harder to trust.",
+              quiz: {
+                prompt: "A student cannot join a class and you have fixed the room link. How do you finish the desk work?",
+                choices: [
+                  { text: "Close the support case", ok: true, why: "The case is the record that the problem was handled." },
+                  { text: "Delete the live class", ok: false, why: "The class was fixed. The case still needs to be closed." },
+                  { text: "Deactivate the student", ok: false, why: "Deactivate is a staff-account action, and it would lock them out." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Open a case",
+                  say: "Open case records who asked and what broke. It lands in the queue.",
+                  screen: "Support",
+                  blurb: "One case per problem.",
+                  controls: [
+                    { label: "Open case", kind: "primary", correct: true },
+                    { label: "Close", kind: "ghost", hint: "Close is for a case that is already open." },
+                  ],
+                },
+                {
+                  title: "Close it",
+                  say: "When the learner is unblocked, Close on that row. Reports counts how many cases are still open.",
+                  screen: "Open case",
+                  blurb: "Closing removes it from the open count.",
+                  controls: [
+                    { label: "Close", kind: "ghost", correct: true },
+                    { label: "Open case", kind: "primary", hint: "A second case would duplicate the same problem." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "reports",
+              title: "Reports",
+              path: "/reports",
+              permission: "reports.read",
+              summary:
+                "A live snapshot: active learners, published courses, enrollments, attempts, published results, pending orders, open support cases, live classes, and campaigns.",
+              learner: "Nothing here is sent to phones. It is for staff who need the size of the institute right now.",
+              watch: "This page does not edit records. If a number looks wrong, open the screen that owns those records.",
+              quiz: {
+                prompt: "Pending orders look high. Which screen do you open to work them?",
+                choices: [
+                  { text: "Orders", ok: true, why: "Reports only counts them. Orders is where you create and reconcile." },
+                  { text: "Reports, and type a new total", ok: false, why: "The snapshot is calculated. You cannot type over it." },
+                  { text: "Amazing facts", ok: false, why: "Facts are content cards." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Read the four blocks",
+                  say: "Learners, Learning, Assessments, and Operations. Each line is a count from live records.",
+                  screen: "Reports",
+                  blurb: "Operational snapshot. Nothing to save.",
+                  controls: [
+                    { label: "Read Operations", kind: "ghost", correct: true },
+                    { label: "Save setting", kind: "primary", hint: "Settings is a different page. Reports is read-only." },
+                  ],
+                },
+                {
+                  title: "Jump to the source",
+                  say: "A high open-support count means open Support. A high pending-order count means open Orders. The report itself has no edit button.",
+                  screen: "Operations block",
+                  blurb: "Pending orders and open support cases.",
+                  controls: [
+                    { label: "Go fix them on the source screen", kind: "primary", correct: true },
+                    { label: "Publish the report", kind: "ghost", hint: "There is no publish button. The numbers are already live." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "audit",
+              title: "Audit log",
+              path: "/audit",
+              permission: "audit.read",
+              summary:
+                "An append-only history of high-impact admin actions: who did it, what they did, and which record changed. Filter by action, resource, severity, and UTC dates.",
+              learner: "Learners do not see this. It is the institute's memory of staff actions.",
+              watch: "You cannot delete a row to undo a mistake. Undo the mistake in the screen that made it, which writes a new audit event.",
+              quiz: {
+                prompt: "Someone published a course by mistake. How do you use the audit log?",
+                choices: [
+                  { text: "Find the actor and the time, then correct the course on the Courses screen", ok: true, why: "The log explains what happened. The correction happens on the owning screen and creates a new event." },
+                  { text: "Delete the audit row", ok: false, why: "The log is append-only." },
+                  { text: "Deactivate every staff account", ok: false, why: "That locks the console. It does not unpublish one course." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Search the event",
+                  say: "Search action, actor, or resource. Narrow with From and To in UTC, plus action and severity.",
+                  screen: "Audit log",
+                  blurb: "Append-only history.",
+                  controls: [
+                    { label: "Search the actor", kind: "ghost", correct: true },
+                    { label: "Delete the row", kind: "danger", hint: "Rows cannot be deleted." },
+                  ],
+                },
+                {
+                  title: "Correct the source",
+                  say: "Leave the log as it is. Open the screen named in the resource and make the real fix. That fix is a new event.",
+                  screen: "Event detail",
+                  blurb: "Actor, action, resource, time.",
+                  controls: [
+                    { label: "Open the source screen", kind: "primary", correct: true },
+                    { label: "Clear the log", kind: "danger", hint: "Clearing history is not available, and it would hide the mistake." },
+                  ],
+                },
+              ],
+            },
+            {
+              id: "settings",
+              title: "Settings",
+              path: "/settings",
+              permission: "settings.manage",
+              summary:
+                "Institute key-value settings, plus a board of which external providers are actually configured: payments, push, video, and the rest.",
+              learner:
+                "Students never open settings. A missing provider is why their checkout, push, or video still will not complete.",
+              watch: "Save setting writes exactly the key and value you type. A provider card that says not_configured cannot be fixed by inventing a key name.",
+              quiz: {
+                prompt: "Notifications will not leave the building. What do you check here?",
+                choices: [
+                  { text: "The push provider card, to see if it is configured", ok: true, why: "Send depends on that provider. The card says configured or not_configured." },
+                  { text: "The coupon percent", ok: false, why: "Coupons do not deliver push messages." },
+                  { text: "The audit date filter", ok: false, why: "The log can show that someone clicked Send. It does not connect a provider." },
+                ],
+              },
+              steps: [
+                {
+                  title: "Read the provider cards",
+                  say: "Each card is a provider name and a pill: configured or not_configured. This is the first check when push, pay, or video fails.",
+                  screen: "Settings",
+                  blurb: "Institute settings and which providers are configured.",
+                  controls: [
+                    { label: "Read the provider pills", kind: "ghost", correct: true },
+                    { label: "Save setting", kind: "primary", hint: "A random key will not flip a provider card. Read the card first." },
+                  ],
+                },
+                {
+                  title: "Save a known setting",
+                  say: "Save setting stores a key and a value the institute already uses. Search the table before adding a duplicate key.",
+                  screen: "Setting drawer",
+                  blurb: "Key and value.",
+                  controls: [
+                    { label: "Save setting", kind: "primary", correct: true },
+                    { label: "Issue document", kind: "ghost", hint: "Documents are not settings." },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      const ITEMS = GROUPS.flatMap((g) => g.items.map((item) => ({ ...item, group: g.label, groupId: g.id })));
+      const KEY = "redi.adminGuide.practiced.v1";
+      const state = {
+        id: null,
+        step: 0,
+        query: "",
+        practiced: load(),
+        quiz: null,
+        hint: "",
+        hintTone: "",
+      };
+
+      function load() {
+        try {
+          const v = JSON.parse(localStorage.getItem(KEY) || "{}");
+          return v && typeof v === "object" ? v : {};
+        } catch {
+          return {};
+        }
+      }
+      function save() {
+        localStorage.setItem(KEY, JSON.stringify(state.practiced));
+      }
+      function el(tag, cls, text) {
+        const n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text != null) n.textContent = text;
+        return n;
+      }
+      function current() {
+        return ITEMS.find((i) => i.id === state.id) || null;
+      }
+
+      function renderNav() {
+        const nav = document.getElementById("nav");
+        nav.replaceChildren();
+        const q = state.query.trim().toLowerCase();
+        const home = el("button", "fn" + (state.id ? "" : " active"), "All functions");
+        home.type = "button";
+        home.addEventListener("click", () => {
+          state.id = null;
+          state.step = 0;
+          state.hint = "";
+          state.hintTone = "";
+          if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+          render();
+        });
+        nav.appendChild(home);
+        for (const group of GROUPS) {
+          const items = group.items.filter((item) => {
+            if (!q) return true;
+            return (item.title + " " + item.summary + " " + item.path + " " + group.label)
+              .toLowerCase()
+              .includes(q);
+          });
+          if (!items.length) continue;
+          nav.appendChild(el("div", "group-label", group.label));
+          for (const item of items) {
+            const b = el("button", "fn" + (state.id === item.id ? " active" : "") + (state.practiced[item.id] ? " learned" : ""));
+            b.type = "button";
+            b.append(document.createTextNode(item.title), el("i", "dot"));
+            b.addEventListener("click", () => openItem(item.id));
+            nav.appendChild(b);
+          }
+        }
+        const done = ITEMS.filter((i) => state.practiced[i.id]).length;
+        document.getElementById("count").textContent = String(done);
+        document.getElementById("total").textContent = String(ITEMS.length);
+        document.getElementById("bar").style.width = Math.round((done / ITEMS.length) * 100) + "%";
+      }
+
+      function openItem(id) {
+        state.id = id;
+        state.step = 0;
+        state.quiz = null;
+        state.hint = "Click the control this step is asking for.";
+        state.hintTone = "";
+        if (location.hash !== "#" + id) history.replaceState(null, "", "#" + id);
+        render();
+      }
+
+      function renderHome() {
+        const stage = document.getElementById("stage");
+        stage.replaceChildren();
+        stage.append(
+          el("p", "kicker", "Ranjan Educational Institute"),
+          el("h1", null, "How an admin manages each function"),
+          el(
+            "p",
+            "lead",
+            "Pick a function on the left, or start below. Each one opens a small copy of that screen. Click the control the step names. A green dot means you have finished that practice.",
+          ),
+        );
+        const chips = el("div", "chips");
+        const day = el("button", "chip on", "Walk a normal day");
+        day.type = "button";
+        day.addEventListener("click", () => openItem("dashboard"));
+        chips.appendChild(day);
+        for (const g of GROUPS) {
+          const c = el("button", "chip", g.label);
+          c.type = "button";
+          c.addEventListener("click", () => openItem(g.items[0].id));
+          chips.appendChild(c);
+        }
+        stage.appendChild(chips);
+
+        const legend = el("div", "legend");
+        legend.append(el("i", "lg-o", "Orange — the main action"), el("i", "lg-b", "Blue outline — a secondary action"), el("i", "lg-r", "Red — block, revoke, or other destructive action"));
+        stage.appendChild(legend);
+
+        const grid = el("div", "grid");
+        const habits = [
+          ["Sign in is separate", "Admin email and password never open the learner app, and a learner token never opens this console."],
+          ["Draft, then publish", "Courses, tests, banners, explore tiles, and articles stay private until you publish the row."],
+          ["Menus follow permission", "A missing item means this account does not have that permission. The server checks the address too."],
+          ["Drawers are the forms", "Create, issue, schedule, and save open a panel from the right. The table stays behind it."],
+          ["Filters are local", "Search and the dropdowns narrow the table. Reset clears them. They do not delete records."],
+          ["The log is append-only", "Fix a mistake on its own screen. The audit log keeps both the mistake and the fix."],
+        ];
+        for (const [t, d] of habits) {
+          const card = el("article", "card");
+          card.append(el("strong", null, t), el("small", null, d));
+          grid.appendChild(card);
+        }
+        stage.appendChild(grid);
+
+        const grid2 = el("div", "grid");
+        grid2.style.marginTop = "14px";
+        for (const item of ITEMS) {
+          const card = el("button", "card");
+          card.type = "button";
+          card.append(el("span", "tag", item.group), el("strong", null, item.title), el("small", null, item.summary));
+          card.addEventListener("click", () => openItem(item.id));
+          grid2.appendChild(card);
+        }
+        stage.appendChild(grid2);
+      }
+
+      function renderDetail() {
+        const item = current();
+        const stage = document.getElementById("stage");
+        stage.replaceChildren();
+        const index = ITEMS.findIndex((i) => i.id === item.id);
+        stage.append(el("p", "kicker", item.group), el("h1", null, item.title));
+        const meta = el("div", "meta");
+        meta.append(el("span", "pill path", item.path), el("span", "pill", item.permission));
+        stage.appendChild(meta);
+
+        const layout = el("div", "layout");
+        const left = el("section", "panel");
+        left.append(
+          el("h2", null, "What this function is"),
+          el("p", "say", item.summary),
+          el("h2", null, "What the learner sees"),
+          el("p", "say", item.learner),
+        );
+        const ol = el("ol", "steps");
+        item.steps.forEach((step, i) => {
+          const b = el("button", i === state.step ? "on" : "");
+          b.type = "button";
+          b.append(el("b", null, i + 1 + ". " + step.title), el("span", null, step.say));
+          b.addEventListener("click", () => {
+            state.step = i;
+            state.hint = "Click the control this step is asking for.";
+            state.hintTone = "";
+            render();
+          });
+          const li = el("li");
+          li.appendChild(b);
+          ol.appendChild(li);
+        });
+        left.append(el("h2", null, "Do it in order"), ol, el("div", "watch", item.watch));
+
+        const quiz = el("div", "quiz");
+        quiz.append(el("h2", null, "Check yourself"), el("p", "say", item.quiz.prompt));
+        item.quiz.choices.forEach((choice, i) => {
+          const b = el("button", state.quiz === i ? (choice.ok ? "right" : "wrong") : "", choice.text);
+          b.type = "button";
+          b.addEventListener("click", () => {
+            state.quiz = i;
+            if (choice.ok) state.practiced[item.id] = true;
+            save();
+            render();
+          });
+          quiz.appendChild(b);
+          if (state.quiz === i) quiz.append(el("p", choice.ok ? "hint ok" : "hint no", choice.why));
+        });
+        left.appendChild(quiz);
+
+        const actions = el("div", "row-actions");
+        if (index > 0) {
+          const prev = el("button", "btn ghost", "Previous function");
+          prev.type = "button";
+          prev.addEventListener("click", () => openItem(ITEMS[index - 1].id));
+          actions.appendChild(prev);
+        }
+        if (index < ITEMS.length - 1) {
+          const next = el("button", "btn", "Next function");
+          next.type = "button";
+          next.addEventListener("click", () => openItem(ITEMS[index + 1].id));
+          actions.appendChild(next);
+        }
+        const reset = el("button", "btn ghost", state.practiced[item.id] ? "Practiced" : "Mark practiced");
+        reset.type = "button";
+        reset.addEventListener("click", () => {
+          if (state.practiced[item.id]) delete state.practiced[item.id];
+          else state.practiced[item.id] = true;
+          save();
+          render();
+        });
+        actions.appendChild(reset);
+        left.appendChild(actions);
+
+        const right = el("section", "panel mock");
+        const step = item.steps[state.step];
+        const top = el("div", "mock-top");
+        top.append(el("strong", null, "Practice screen"), el("span", "pill", "Step " + (state.step + 1) + " of " + item.steps.length));
+        const screen = el("div", "mock-screen");
+        screen.append(el("h3", null, step.screen), el("p", null, step.blurb), el("p", "say", step.say));
+        const controls = el("div", "actions");
+        for (const control of step.controls) {
+          const b = el("button", "btn" + (control.kind === "primary" ? "" : " " + control.kind), control.label);
+          b.type = "button";
+          b.addEventListener("click", () => {
+            if (control.correct) {
+              state.hintTone = "ok";
+              if (state.step < item.steps.length - 1) {
+                state.hint = "That is the one. The next step is ready.";
+                state.step += 1;
+              } else {
+                state.hint = "That completes the clicks for " + item.title + ". Answer the check below.";
+                state.practiced[item.id] = true;
+                save();
+              }
+            } else {
+              state.hintTone = "no";
+              state.hint = control.hint;
+            }
+            render();
+          });
+          controls.appendChild(b);
+        }
+        screen.appendChild(controls);
+        const hint = el("div", "hint" + (state.hintTone ? " " + state.hintTone : ""), state.hint || "Click the control this step is asking for.");
+        right.append(top, screen, hint);
+
+        layout.append(left, right);
+        stage.appendChild(layout);
+      }
+
+      function render() {
+        renderNav();
+        if (current()) renderDetail();
+        else renderHome();
+      }
+
+      document.getElementById("q").addEventListener("input", (e) => {
+        state.query = e.target.value;
+        renderNav();
+      });
+      const start = location.hash.replace("#", "");
+      if (ITEMS.some((item) => item.id === start)) {
+        state.id = start;
+        state.hint = "Click the control this step is asking for.";
+        state.hintTone = "";
+      }
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "/" && document.activeElement.id !== "q") {
+          e.preventDefault();
+          document.getElementById("q").focus();
+        }
+      });
+      render();
+    </script>
+  </body>
+</html>

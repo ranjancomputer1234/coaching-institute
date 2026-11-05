@@ -48,11 +48,6 @@ function relativeTime(iso: string) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-const greeting = () => {
-  const h = new Date().getHours();
-  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-};
-
 export function DashboardPage() {
   const { user } = useAuth();
   const firstName = user?.name?.split(' ')[0] ?? 'there';
@@ -70,9 +65,9 @@ export function DashboardPage() {
       !data
         ? []
         : [
-            { key: 'active', label: 'Active learners', value: data.learners.active, color: '#2f9e7b', to: '/learners' },
-            { key: 'pending', label: 'Pending verification', value: data.learners.pendingVerification, color: '#c9a227', to: '/learners' },
-            { key: 'suspended', label: 'Suspended', value: data.learners.suspended, color: '#d46565', to: '/learners?state=suspended' },
+            { key: 'active', label: 'Active learners', value: data.learners.active, color: '#1fa971', to: '/learners' },
+            { key: 'pending', label: 'Pending verification', value: data.learners.pendingVerification, color: '#f5a524', to: '/learners' },
+            { key: 'suspended', label: 'Suspended', value: data.learners.suspended, color: '#e15d55', to: '/learners?state=suspended' },
           ],
     [data],
   );
@@ -94,7 +89,8 @@ export function DashboardPage() {
           value: data.learners.total,
           sub: `${data.learners.active} active · ${data.learners.suspended} suspended`,
           icon: GraduationCap,
-          color: '#2f9e7b',
+          color: '#3d5afe',
+          tint: '#e8efff',
           to: '/learners',
           pct: data.learners.total ? (data.learners.active / data.learners.total) * 100 : 0,
           pctLabel: 'active rate',
@@ -104,7 +100,8 @@ export function DashboardPage() {
           value: data.courses.published,
           sub: `${data.courses.draft} drafts in progress`,
           icon: BookOpen,
-          color: '#5b8def',
+          color: '#1fa971',
+          tint: '#e5f8ee',
           to: '/courses',
           pct: data.courses.published + data.courses.draft ? (data.courses.published / (data.courses.published + data.courses.draft)) * 100 : 0,
           pctLabel: 'published',
@@ -114,7 +111,8 @@ export function DashboardPage() {
           value: data.explore.published,
           sub: 'published on learner app',
           icon: Compass,
-          color: '#9b7bea',
+          color: '#7b4dff',
+          tint: '#f1ebff',
           to: '/explore',
           pct: 100,
           pctLabel: 'live',
@@ -124,7 +122,8 @@ export function DashboardPage() {
           value: data.banners.published,
           sub: `${data.banners.scheduled} scheduled`,
           icon: Image,
-          color: '#e08a3c',
+          color: '#ff8a1a',
+          tint: '#fff1e0',
           to: '/banners',
           pct: data.banners.published + data.banners.scheduled ? (data.banners.published / (data.banners.published + data.banners.scheduled)) * 100 : 0,
           pctLabel: 'live now',
@@ -139,7 +138,7 @@ export function DashboardPage() {
           desc: 'Accounts blocked — review and restore or keep suspended',
           count: data.queues.suspendedLearners,
           icon: ShieldAlert,
-          color: '#d46565',
+          color: '#e15d55',
           to: '/learners?state=suspended',
           cta: 'Review learners',
           action: true,
@@ -149,7 +148,7 @@ export function DashboardPage() {
           desc: 'Draft courses waiting to be published',
           count: data.queues.draftsAwaitingReview,
           icon: ClipboardList,
-          color: '#c9a227',
+          color: '#f5a524',
           to: '/courses',
           cta: 'Open courses',
           action: true,
@@ -159,7 +158,7 @@ export function DashboardPage() {
           desc: 'Learners who have not completed verification',
           count: data.learners.pendingVerification,
           icon: AlertTriangle,
-          color: '#e08a3c',
+          color: '#ff8a1a',
           to: '/learners',
           cta: 'Verify now',
           action: true,
@@ -169,7 +168,7 @@ export function DashboardPage() {
           desc: 'All-time course enrollments across batches',
           count: data.enrollments.total,
           icon: CheckCircle2,
-          color: '#2f9e7b',
+          color: '#1fa971',
           to: '/learners',
           cta: 'View enrollments',
           action: false,
@@ -181,12 +180,12 @@ export function DashboardPage() {
   const attentionCount = queues.filter((q) => q.action).reduce((n, q) => n + q.count, 0);
 
   const quickActions = [
-    { label: 'Add learner', desc: 'Enrol a new student', icon: UserPlus, to: '/learners', color: '#2f9e7b' },
-    { label: 'Create course', desc: 'Start a new course draft', icon: BookOpen, to: '/courses', color: '#5b8def' },
-    { label: 'Add lesson', desc: 'Upload lesson / resource', icon: PlaySquare, to: '/lessons', color: '#9b7bea' },
-    { label: 'Schedule live class', desc: 'Plan the next session', icon: Radio, to: '/live-classes', color: '#e0506b' },
-    { label: 'Send notification', desc: 'Notify learners', icon: Bell, to: '/notifications', color: '#e08a3c' },
-    { label: 'New banner', desc: 'Promote on home screen', icon: Image, to: '/banners', color: '#2aa198' },
+    { label: 'Add learner', desc: 'Enrol a new student', icon: UserPlus, to: '/learners', color: '#3d5afe', tint: '#e8efff' },
+    { label: 'Create course', desc: 'Start a new course draft', icon: BookOpen, to: '/courses', color: '#1fa971', tint: '#e5f8ee' },
+    { label: 'Add lesson', desc: 'Upload lesson / resource', icon: PlaySquare, to: '/lessons', color: '#7b4dff', tint: '#f1ebff' },
+    { label: 'Schedule live class', desc: 'Plan the next session', icon: Radio, to: '/live-classes', color: '#e15d55', tint: '#fdecec' },
+    { label: 'Send notification', desc: 'Notify learners', icon: Bell, to: '/notifications', color: '#ff8a1a', tint: '#fff1e0' },
+    { label: 'New banner', desc: 'Promote on home screen', icon: Image, to: '/banners', color: '#1fa971', tint: '#e5f8ee' },
   ];
 
   return (
@@ -194,11 +193,9 @@ export function DashboardPage() {
       <div className="page-header dash-head">
         <div>
           <p className="dash-kicker">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-          <h1>
-            {greeting()}, {firstName}
-          </h1>
+          <h1>Hello, {firstName}!</h1>
           <p>
-            Operational overview for REDI admin staff
+            What would you like to manage today?
             {dataUpdatedAt ? ` · updated ${relativeTime(new Date(dataUpdatedAt).toISOString())}` : ''}
           </p>
         </div>
@@ -206,10 +203,35 @@ export function DashboardPage() {
           <button className="btn btn-ghost dash-refresh" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw size={15} className={isFetching ? 'spin' : ''} /> {isFetching ? 'Refreshing…' : 'Refresh'}
           </button>
-          <Link className="btn" to="/courses">
+          <Link className="btn btn-ghost" to="/courses">
             <Sparkles size={15} /> New course
           </Link>
         </div>
+      </div>
+
+      <div className="home-hero">
+        <div>
+          <h2>Start managing with RACI</h2>
+          <p>Courses, tests, and live classes</p>
+          <Link className="btn hero-cta" to="/courses">
+            <ArrowRight size={16} /> Explore
+          </Link>
+        </div>
+      </div>
+
+      <div className="home-pills">
+        <Link to="/learners" className="home-pill">
+          <span className="pill-ico">
+            <GraduationCap size={18} />
+          </span>
+          Learners
+        </Link>
+        <Link to="/live-classes" className="home-pill orange">
+          <span className="pill-ico">
+            <Radio size={18} />
+          </span>
+          Live classes
+        </Link>
       </div>
 
       <PageState loading={isLoading} error={error instanceof Error ? error : null}>
@@ -236,7 +258,7 @@ export function DashboardPage() {
               {kpis.map((k) => {
                 const Icon = k.icon;
                 return (
-                  <Link key={k.label} className="metric-card dash-kpi" to={k.to} style={{ '--kpi': k.color } as React.CSSProperties}>
+                  <Link key={k.label} className="metric-card dash-kpi" to={k.to} style={{ '--kpi': k.color, '--kpi-bg': k.tint } as React.CSSProperties}>
                     <span className="kpi-top">
                       <span className="kpi-icon">
                         <Icon size={20} />
@@ -379,7 +401,13 @@ export function DashboardPage() {
                           <span className="queue-body">
                             <span className="queue-title">
                               {item.label}{' '}
-                              <span className="queue-count" style={{ background: item.count ? item.color : undefined }}>
+                              <span
+                                className="queue-count"
+                                style={{
+                                  background: item.count ? item.color : undefined,
+                                  color: item.count ? '#fff' : undefined,
+                                }}
+                              >
                                 {item.count}
                               </span>
                             </span>
@@ -409,7 +437,7 @@ export function DashboardPage() {
                   {quickActions.map((a) => {
                     const Icon = a.icon;
                     return (
-                      <Link key={a.label} to={a.to} className="quick-card">
+                      <Link key={a.label} to={a.to} className="quick-card" style={{ background: a.tint }}>
                         <span
                           className="quick-icon"
                           style={{ color: a.color, background: `color-mix(in srgb, ${a.color} 15%, transparent)` }}

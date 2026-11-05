@@ -30,6 +30,22 @@ export class CreateTestDto {
 
   @IsOptional()
   @IsString()
+  examId?: string;
+
+  @IsOptional()
+  @IsString()
+  pricing?: string;
+
+  @IsOptional()
+  @IsString()
+  marking?: string;
+
+  @IsOptional()
+  @IsString()
+  negativeMarkingLabel?: string;
+
+  @IsOptional()
+  @IsString()
   semesterId?: string;
 
   @IsOptional()
@@ -69,6 +85,22 @@ export class UpdateTestDto {
   @IsOptional()
   @IsEnum(TestMode)
   mode?: TestMode;
+
+  @IsOptional()
+  @IsString()
+  examId?: string;
+
+  @IsOptional()
+  @IsString()
+  pricing?: string;
+
+  @IsOptional()
+  @IsString()
+  marking?: string;
+
+  @IsOptional()
+  @IsString()
+  negativeMarkingLabel?: string;
 
   @IsOptional()
   @IsString()
