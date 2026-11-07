@@ -1,9 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import {
-  ContentLifecycle,
-  CourseCommercialMode,
-  Prisma,
-} from '@prisma/client';
+import { ContentLifecycle, CourseCommercialMode, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { parseCursorTake, toPage } from '../../common/utils/pagination';
 import {

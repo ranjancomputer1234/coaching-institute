@@ -25,7 +25,10 @@ export class LearnerLiveService {
     return status;
   }
 
-  private recordingAvailable(recordingStatus: string, playbackUrl: string | null) {
+  private recordingAvailable(
+    recordingStatus: string,
+    playbackUrl: string | null,
+  ) {
     return (
       Boolean(playbackUrl) &&
       ['ready', 'available', 'published'].includes(recordingStatus)
@@ -111,9 +114,7 @@ export class LearnerLiveService {
       where: { id, status: { in: visibleStatuses } },
       include: {
         batch: { select: { name: true } },
-        reminders: learnerId
-          ? { where: { learnerId }, take: 1 }
-          : false,
+        reminders: learnerId ? { where: { learnerId }, take: 1 } : false,
       },
     });
     if (!row) {

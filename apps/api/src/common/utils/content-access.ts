@@ -10,7 +10,7 @@ export type LearnerAccess = {
 
 /** Guest/paid access for catalogue rows that use commercialMode. */
 export function resolveCommercialAccess(
-  commercialMode: CourseCommercialMode | string,
+  commercialMode: string,
   opts?: { learnerId?: string | null; entitled?: boolean },
 ): LearnerAccess {
   const mode = String(commercialMode);
@@ -53,7 +53,9 @@ export function resolvePricingAccess(
   );
 }
 
-export function parseJsonArray<T = unknown>(raw: string | null | undefined): T[] {
+export function parseJsonArray<T = unknown>(
+  raw: string | null | undefined,
+): T[] {
   try {
     const parsed = JSON.parse(raw || '[]') as unknown;
     return Array.isArray(parsed) ? (parsed as T[]) : [];

@@ -4,7 +4,11 @@ export type PageResult<T> = {
   total: number;
 };
 
-export function parseCursorTake(cursor?: string, defaultTake = 50, maxTake = 100) {
+export function parseCursorTake(
+  cursor?: string,
+  defaultTake = 50,
+  maxTake = 100,
+) {
   const take = Math.min(maxTake, defaultTake);
   return {
     take: take + 1,
@@ -22,7 +26,7 @@ export function toPage<T extends { id: string }>(
   const items = hasMore ? rows.slice(0, pageSize) : rows;
   return {
     items,
-    nextCursor: hasMore ? items[items.length - 1]?.id ?? null : null,
+    nextCursor: hasMore ? (items[items.length - 1]?.id ?? null) : null,
     total,
   };
 }

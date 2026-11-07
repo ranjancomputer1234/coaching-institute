@@ -50,10 +50,7 @@ export class LearnerLiveController {
 
   @UseGuards(LearnerJwtAuthGuard)
   @Post(':id/join')
-  join(
-    @Param('id') id: string,
-    @CurrentUser() user: { learnerId: string },
-  ) {
+  join(@Param('id') id: string, @CurrentUser() user: { learnerId: string }) {
     return this.live.join(id, user.learnerId);
   }
 

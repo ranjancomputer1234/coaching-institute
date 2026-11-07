@@ -76,10 +76,7 @@ export class PlatformController {
 
   @Post('content-categories/:id/publish')
   @RequirePermissions('content.publish')
-  publishContentCategory(
-    @Param('id') id: string,
-    @CurrentUser() user: Actor,
-  ) {
+  publishContentCategory(@Param('id') id: string, @CurrentUser() user: Actor) {
     return this.platform.publishContentCategory(id, user);
   }
 

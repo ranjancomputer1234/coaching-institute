@@ -12,7 +12,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { CourseCommercialMode, EditorialKind } from '@prisma/client';
+import { EditorialKind } from '@prisma/client';
 
 export class CreateEditorialDto {
   @IsEnum(EditorialKind)

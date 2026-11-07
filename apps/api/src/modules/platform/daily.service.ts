@@ -82,9 +82,7 @@ export class DailyService {
       body: JSON.stringify(body),
     });
     const json = (await response.json().catch(() => null)) as
-      | DailyRoom
-      | { error?: string; info?: string }
-      | null;
+      DailyRoom | { error?: string; info?: string } | null;
 
     if (!response.ok || !json || !('url' in json) || !json.url) {
       const message =

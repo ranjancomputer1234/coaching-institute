@@ -1,9 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import {
-  ContentLifecycle,
-  EditorialKind,
-  Prisma,
-} from '@prisma/client';
+import { ContentLifecycle, EditorialKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { parseCursorTake, toPage } from '../../common/utils/pagination';
 import {
@@ -179,7 +175,9 @@ export class LearnerEditorialService {
       tags,
       featured: row.featured,
       imageUrl: row.imageUrl,
-      ...(includeBody ? { body, highlights: access.granted ? highlights : [] } : {}),
+      ...(includeBody
+        ? { body, highlights: access.granted ? highlights : [] }
+        : {}),
       access,
     };
   }
@@ -328,7 +326,7 @@ export class LearnerEditorialService {
     const page = toPage(rows, pageSize, total);
     return {
       ...page,
-      items: page.items.map((row) => this.mapFact(row, opts.learnerId)),
+      items: page.items.map((row) => this.mapFact(row)),
     };
   }
 
@@ -336,9 +334,7 @@ export class LearnerEditorialService {
     const row = await this.prisma.editorialItem.findFirst({
       where: { id, kind: EditorialKind.fact, ...published },
       include: {
-        reactions: learnerId
-          ? { where: { learnerId }, take: 1 }
-          : false,
+        reactions: learnerId ? { where: { learnerId }, take: 1 } : false,
       },
     });
     if (!row) {
@@ -348,25 +344,22 @@ export class LearnerEditorialService {
         fieldErrors: {},
       });
     }
-    return this.mapFact(row, learnerId);
+    return this.mapFact(row);
   }
 
-  private mapFact(
-    row: {
-      id: string;
-      categoryId: string | null;
-      category: string | null;
-      title: string;
-      summary: string | null;
-      explanation: string | null;
-      body: string | null;
-      reactionCount: number;
-      featured: boolean;
-      quizId: string | null;
-      reactions?: { reacted: boolean; bookmarked: boolean }[];
-    },
-    _learnerId?: string,
-  ) {
+  private mapFact(row: {
+    id: string;
+    categoryId: string | null;
+    category: string | null;
+    title: string;
+    summary: string | null;
+    explanation: string | null;
+    body: string | null;
+    reactionCount: number;
+    featured: boolean;
+    quizId: string | null;
+    reactions?: { reacted: boolean; bookmarked: boolean }[];
+  }) {
     const reaction = row.reactions?.[0];
     return {
       id: row.id,

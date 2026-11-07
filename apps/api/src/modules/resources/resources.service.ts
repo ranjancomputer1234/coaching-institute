@@ -75,7 +75,7 @@ export class ResourcesService {
   }): Promise<Placement> {
     let courseId = normalizeId(input.courseId);
     const lessonId = normalizeId(input.lessonId);
-    let semesterId = normalizeId(input.semesterId);
+    const semesterId = normalizeId(input.semesterId);
 
     if (lessonId) {
       const lesson = await this.prisma.lesson.findUnique({
@@ -92,7 +92,9 @@ export class ResourcesService {
         throw new BadRequestException({
           code: 'LESSON_COURSE_MISMATCH',
           message: 'That lesson belongs to a different course',
-          fieldErrors: { lessonId: 'That lesson belongs to a different course' },
+          fieldErrors: {
+            lessonId: 'That lesson belongs to a different course',
+          },
         });
       }
       courseId = lesson.courseId;
@@ -126,7 +128,8 @@ export class ResourcesService {
             code: 'INVALID_SEMESTER',
             message: 'That semester does not belong to the selected course',
             fieldErrors: {
-              semesterId: 'That semester does not belong to the selected course',
+              semesterId:
+                'That semester does not belong to the selected course',
             },
           });
         }
