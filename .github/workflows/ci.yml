@@ -69,8 +69,23 @@ jobs:
       - name: Migrate and seed
         working-directory: apps/api
         run: |
-          pnpm prisma:migrate
-          pnpm prisma:seed
+          set +e
+          pnpm prisma:migrate > migrate.log 2>&1
+          code=$?
+          if [ "$code" -ne 0 ]; then
+            tail -n 50 migrate.log | while IFS= read -r line; do
+              echo "::error title=prisma migrate::$line"
+            done
+            exit "$code"
+          fi
+          pnpm prisma:seed > seed.log 2>&1
+          code=$?
+          if [ "$code" -ne 0 ]; then
+            tail -n 50 seed.log | while IFS= read -r line; do
+              echo "::error title=prisma seed::$line"
+            done
+            exit "$code"
+          fi
       - name: E2E tests
         working-directory: apps/api
         run: pnpm test:e2e
