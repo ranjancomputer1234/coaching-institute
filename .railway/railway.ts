@@ -34,6 +34,7 @@ export default defineRailway(() => {
       APP_ENV: 'production',
       // The API refuses to boot in production without sslmode=require.
       DATABASE_URL: '${{postgres.DATABASE_URL}}?sslmode=require',
+      DIRECT_URL: '${{postgres.DATABASE_URL}}?sslmode=require',
       JWT_SECRET: preserve(),
       LEARNER_JWT_SECRET: preserve(),
       OFFLINE_GRANT_SECRET: preserve(),
