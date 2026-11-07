@@ -118,9 +118,15 @@ export class LearnerCatalogueService {
           : Promise.resolve([]),
       ]);
 
-    const banners = bannerRows.filter(
-      (b) => typeof b.imageUrl === 'string' && b.imageUrl.trim().length > 0,
-    );
+    const banners = bannerRows
+      .filter(
+        (b) => typeof b.imageUrl === 'string' && b.imageUrl.trim().length > 0,
+      )
+      .map((b) => ({
+        ...b,
+        targetKind: b.targetKind?.trim() ? b.targetKind : null,
+        targetRef: b.targetRef?.trim() ? b.targetRef : null,
+      }));
 
     return {
       banners,

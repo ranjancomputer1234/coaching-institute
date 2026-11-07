@@ -101,6 +101,11 @@ export class CreateEditorialDto {
 }
 
 export class CreateContentCategoryDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-z0-9-]{2,40}$/)
+  id?: string;
+
   @IsEnum(EditorialKind)
   kind!: EditorialKind;
 

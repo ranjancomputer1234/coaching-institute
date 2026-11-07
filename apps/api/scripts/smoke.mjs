@@ -501,7 +501,7 @@ async function main() {
     },
   });
   const scheduledLive = await call('POST', `/admin/live-classes/${live?.id}/schedule`, { token: at });
-  // Without DAILY_API_KEY → provider_unavailable; with key → scheduled + joinUrl.
+  // Without DAILY_API_KEY the class stays scheduled for learners; with a key it gets a join URL.
   check(
     'live schedule returns a capability message',
     Boolean(scheduledLive?.message),

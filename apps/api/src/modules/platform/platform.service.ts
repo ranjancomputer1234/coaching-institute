@@ -121,6 +121,7 @@ export class PlatformService {
 
   async createContentCategory(
     dto: {
+      id?: string;
       kind: EditorialKind;
       title: string;
       summary?: string;
@@ -132,6 +133,7 @@ export class PlatformService {
   ) {
     const row = await this.prisma.contentCategory.create({
       data: {
+        ...(dto.id ? { id: dto.id } : {}),
         kind: dto.kind,
         title: dto.title,
         summary: dto.summary,
@@ -332,7 +334,7 @@ export class PlatformService {
       const row = await this.prisma.liveClass.update({
         where: { id },
         data: {
-          status: LiveClassStatus.provider_unavailable,
+          status: LiveClassStatus.scheduled,
           provider: 'unconfigured',
           joinUrl: null,
           recordingStatus: 'not_available',

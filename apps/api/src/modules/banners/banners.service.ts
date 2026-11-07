@@ -43,15 +43,18 @@ export class BannersService {
     return banner;
   }
 
-  private assertTarget(kind: string, ref: string) {
-    if (!kind?.trim() || !ref?.trim()) {
+  private assertTarget(kind?: string, ref?: string) {
+    const safeKind = kind?.trim() ?? '';
+    const safeRef = ref?.trim() ?? '';
+    if (!safeKind && !safeRef) return;
+    if (!safeKind || !safeRef) {
       throw new BadRequestException({
         code: 'INVALID_TARGET',
-        message: 'Target kind and reference are required',
+        message: 'Target kind and reference are required together',
         fieldErrors: {},
       });
     }
-    if (UNSAFE_SCHEMES.test(ref)) {
+    if (UNSAFE_SCHEMES.test(safeRef)) {
       throw new BadRequestException({
         code: 'INVALID_TARGET',
         message: 'Unsafe target URL scheme',
@@ -70,8 +73,8 @@ export class BannersService {
         ctaLabel: dto.ctaLabel,
         placement: dto.placement,
         priority: dto.priority ?? 100,
-        targetKind: dto.targetKind,
-        targetRef: dto.targetRef,
+        targetKind: dto.targetKind?.trim() || '',
+        targetRef: dto.targetRef?.trim() || '',
         imageUrl: dto.imageUrl,
         altText: dto.altText,
         startsAt: dto.startsAt ? new Date(dto.startsAt) : null,

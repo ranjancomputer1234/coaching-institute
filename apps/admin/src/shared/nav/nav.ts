@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Users, ShieldCheck, Layers, BookOpen, CalendarRange, PlaySquare,
+  LayoutDashboard, Users, ShieldCheck, Layers, BookOpen, CalendarRange, PlaySquare, Target,
   FolderKanban, HelpCircle, FileText, ClipboardList, BarChart3, Radio, Compass,
   Image, Newspaper, Lightbulb, Sparkles, Mic, ShoppingBag, TicketPercent, ShoppingCart,
   RotateCcw, Bell, Mail, Award, IdCard, LifeBuoy, PieChart, Scale, ScrollText, Settings,
@@ -45,6 +45,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Assessments', icon: ClipboardList,
     items: [
       { label: 'Question Bank', to: '/questions', icon: HelpCircle, permission: 'assessments.author' },
+      { label: 'Competitive Exams', to: '/exams', icon: Target, permission: 'content.edit' },
       { label: 'Tests', to: '/tests', icon: FileText, permission: 'assessments.author' },
       { label: 'Attempts', to: '/attempts', icon: ClipboardList, permission: 'results.read' },
       { label: 'Results', to: '/results', icon: BarChart3, permission: 'results.read' },

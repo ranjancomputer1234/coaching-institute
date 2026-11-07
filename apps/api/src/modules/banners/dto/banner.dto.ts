@@ -32,11 +32,13 @@ export class CreateBannerDto {
   @IsInt()
   priority?: number;
 
+  @IsOptional()
   @IsString()
-  targetKind!: string;
+  targetKind?: string;
 
+  @IsOptional()
   @IsString()
-  targetRef!: string;
+  targetRef?: string;
 
   @IsOptional()
   @IsString()

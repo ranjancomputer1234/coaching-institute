@@ -31,6 +31,7 @@ type ImageUploadSlot = {
 };
 
 const TARGETS = [
+  { kind: 'none', ref: '', label: 'Do not open a screen' },
   { kind: 'catalog', ref: 'course', label: 'Computer Courses' },
   { kind: 'catalog', ref: 'course,free', label: 'Computer Courses, free only' },
   { kind: 'catalog', ref: 'course,paid', label: 'Computer Courses, paid only' },
@@ -39,6 +40,7 @@ const TARGETS = [
   { kind: 'catalog', ref: 'topic', label: 'General Awareness' },
   { kind: 'catalog', ref: 'fact', label: 'Amazing Facts' },
   { kind: 'catalog', ref: 'interview', label: 'Interview Prep' },
+  { kind: 'course', ref: '', label: 'A specific course' },
 ] as const;
 
 function targetKey(kind: string, ref: string) {
@@ -86,6 +88,7 @@ export function BannersPage() {
   const [altText, setAltText] = useState('');
   const [priority, setPriority] = useState('50');
   const [target, setTarget] = useState(targetKey('catalog', 'course'));
+  const [courseId, setCourseId] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [search, setSearch] = useState('');
@@ -105,6 +108,7 @@ export function BannersPage() {
     setAltText('');
     setPriority('50');
     setTarget(targetKey('catalog', 'course'));
+    setCourseId('');
     setFormError(null);
   };
 
@@ -120,7 +124,16 @@ export function BannersPage() {
     setImageUrl(banner.imageUrl ?? '');
     setAltText(banner.altText ?? '');
     setPriority(String(banner.priority));
-    setTarget(targetKey(banner.targetKind, banner.targetRef));
+    if (banner.targetKind === 'course') {
+      setTarget(targetKey('course', ''));
+      setCourseId(banner.targetRef);
+    } else if (!banner.targetKind?.trim()) {
+      setTarget(targetKey('none', ''));
+      setCourseId('');
+    } else {
+      setTarget(targetKey(banner.targetKind, banner.targetRef));
+      setCourseId('');
+    }
     setFormError(null);
     setDrawerOpen(true);
   };
@@ -136,7 +149,12 @@ export function BannersPage() {
       if (!isHttpsImage(image)) {
         throw new Error('Paste a public https image link, or choose an image file.');
       }
-      const { targetKind, targetRef } = splitTarget(target);
+      const parsed = splitTarget(target);
+      const targetKind = parsed.targetKind === 'none' ? '' : parsed.targetKind;
+      const targetRef = parsed.targetKind === 'course' ? courseId.trim() : parsed.targetRef;
+      if (parsed.targetKind === 'course' && !targetRef) {
+        throw new Error('Enter the course id this banner should open.');
+      }
       const body = {
         campaignName: campaignName.trim(),
         title: title.trim(),
@@ -450,6 +468,17 @@ export function BannersPage() {
               ))}
             </select>
           </div>
+          {splitTarget(target).targetKind === 'course' ? (
+            <div className="field">
+              <label htmlFor="banner-course">Course id</label>
+              <input
+                id="banner-course"
+                value={courseId}
+                onChange={(event) => setCourseId(event.target.value)}
+                required
+              />
+            </div>
+          ) : null}
           <div className="field">
             <label htmlFor="banner-priority">Priority</label>
             <input

@@ -20,6 +20,7 @@ import { SemestersPage } from '../features/semesters/pages/SemestersPage';
 import { StaffPage } from '../features/staff/pages/StaffPage';
 import { LessonsPage } from '../features/lessons/pages/LessonsPage';
 import { EditorialPage } from '../features/editorial/pages/EditorialPage';
+import { ExamsPage } from '../features/exams/pages/ExamsPage';
 import { LiveClassesPage } from '../features/live/pages/LiveClassesPage';
 import { NotificationsPage } from '../features/notifications/pages/NotificationsPage';
 import { DocumentsPage } from '../features/documents/pages/DocumentsPage';
@@ -51,6 +52,7 @@ export function AppRoutes() {
             <Route path="lessons" element={<LessonsPage />} />
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="questions" element={<QuestionsPage />} />
+            <Route path="exams" element={<ExamsPage />} />
             <Route path="tests" element={<TestsPage />} />
             <Route path="attempts" element={<AttemptsPage />} />
             <Route path="results" element={<ResultsPage />} />

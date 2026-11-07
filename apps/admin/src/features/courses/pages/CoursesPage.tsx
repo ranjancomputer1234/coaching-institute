@@ -27,6 +27,12 @@ export function CoursesPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [slug, setSlug] = useState('');
+  const [shortTitle, setShortTitle] = useState('');
+  const [summary, setSummary] = useState('');
+  const [commercialMode, setCommercialMode] = useState('free');
+  const [iconUrl, setIconUrl] = useState('');
+  const [lessonMinutes, setLessonMinutes] = useState('');
+  const [lessonPreview, setLessonPreview] = useState(false);
   const [lessonCourse, setLessonCourse] = useState<Course | null>(null);
   const [lessonTitle, setLessonTitle] = useState('');
   const [lessonDescription, setLessonDescription] = useState('');
@@ -43,7 +49,14 @@ export function CoursesPage() {
     mutationFn: () =>
       apiFetch('/admin/courses', {
         method: 'POST',
-        body: JSON.stringify({ title, slug, commercialMode: 'free' }),
+        body: JSON.stringify({
+          title,
+          slug,
+          commercialMode,
+          shortTitle: shortTitle.trim() || undefined,
+          summary: summary.trim() || undefined,
+          iconUrl: iconUrl.trim() || undefined,
+        }),
       }),
     onSuccess: () => {
       setTitle('');
@@ -68,6 +81,8 @@ export function CoursesPage() {
         body: JSON.stringify({
           title: lessonTitle.trim(),
           ...(description ? { description } : {}),
+          ...(lessonMinutes.trim() ? { durationMinutes: Number(lessonMinutes) } : {}),
+          isPreview: lessonPreview,
         }),
       });
     },
@@ -234,6 +249,39 @@ export function CoursesPage() {
             />
           </div>
           <div className="field">
+            <label htmlFor="course-short">Short title</label>
+            <input
+              id="course-short"
+              value={shortTitle}
+              onChange={(e) => setShortTitle(e.target.value)}
+              placeholder="Shown as a letter when there is no icon"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="course-summary">Summary</label>
+            <input id="course-summary" value={summary} onChange={(e) => setSummary(e.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="course-pricing">Pricing</label>
+            <select
+              id="course-pricing"
+              value={commercialMode}
+              onChange={(e) => setCommercialMode(e.target.value)}
+            >
+              <option value="free">Free</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="course-icon">Icon image link</label>
+            <input
+              id="course-icon"
+              value={iconUrl}
+              onChange={(e) => setIconUrl(e.target.value)}
+              placeholder="https://"
+            />
+          </div>
+          <div className="field">
             <label htmlFor="course-slug">Slug (stable)</label>
             <input
               id="course-slug"
@@ -282,6 +330,24 @@ export function CoursesPage() {
               autoFocus
             />
           </div>
+          <div className="field">
+            <label htmlFor="lesson-minutes">Duration (minutes)</label>
+            <input
+              id="lesson-minutes"
+              type="number"
+              min={0}
+              value={lessonMinutes}
+              onChange={(e) => setLessonMinutes(e.target.value)}
+            />
+          </div>
+          <label className="choice-list">
+            <input
+              type="checkbox"
+              checked={lessonPreview}
+              onChange={(e) => setLessonPreview(e.target.checked)}
+            />
+            Preview lesson, open without purchase
+          </label>
           <div className="field">
             <label htmlFor="lesson-description">Description</label>
             <textarea

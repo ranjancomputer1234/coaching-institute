@@ -29,6 +29,10 @@ export function TestsPage() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState('');
+  const [draftMode, setDraftMode] = useState('practice');
+  const [draftPricing, setDraftPricing] = useState('free');
+  const [examId, setExamId] = useState('');
+  const [durationMinutes, setDurationMinutes] = useState('30');
   const [selectedTest, setSelectedTest] = useState<string | null>(null);
   const [selectedQuestions, setSelectedQuestions] = useState<string[]>([]);
   const [search, setSearch] = useState('');
@@ -38,6 +42,11 @@ export function TestsPage() {
   const tests = useQuery({
     queryKey: ['tests'],
     queryFn: () => apiFetch<Test[]>('/admin/tests'),
+  });
+  const exams = useQuery({
+    queryKey: ['exams'],
+    queryFn: () => apiFetch<Array<{ id: string; title: string }>>('/admin/exams'),
+    enabled: createOpen,
   });
   const questions = useQuery({
     queryKey: ['questions', 'approved'],
@@ -53,7 +62,13 @@ export function TestsPage() {
     mutationFn: () =>
       apiFetch('/admin/tests', {
         method: 'POST',
-        body: JSON.stringify({ title, mode: 'formal', durationMinutes: 30 }),
+        body: JSON.stringify({
+          title,
+          mode: draftMode,
+          pricing: draftPricing,
+          durationMinutes: Number(durationMinutes) || 30,
+          ...(examId ? { examId } : {}),
+        }),
       }),
     onSuccess: () => {
       setTitle('');
@@ -221,6 +236,42 @@ export function TestsPage() {
             create.mutate();
           }}
         >
+          <div className="field">
+            <label htmlFor="test-exam">Exam</label>
+            <select id="test-exam" value={examId} onChange={(e) => setExamId(e.target.value)}>
+              <option value="">Not attached to an exam</option>
+              {(exams.data ?? []).map((exam) => (
+                <option key={exam.id} value={exam.id}>
+                  {exam.title}
+                </option>
+              ))}
+            </select>
+            <p className="field-hint">Exam detail only lists tests that include this exam.</p>
+          </div>
+          <div className="field">
+            <label htmlFor="test-mode">Mode</label>
+            <select id="test-mode" value={draftMode} onChange={(e) => setDraftMode(e.target.value)}>
+              <option value="practice">Practice</option>
+              <option value="formal">Formal</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="test-pricing">Pricing</label>
+            <select id="test-pricing" value={draftPricing} onChange={(e) => setDraftPricing(e.target.value)}>
+              <option value="free">Free</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="test-duration">Duration (minutes)</label>
+            <input
+              id="test-duration"
+              type="number"
+              min={1}
+              value={durationMinutes}
+              onChange={(e) => setDurationMinutes(e.target.value)}
+            />
+          </div>
           <div className="field">
             <label htmlFor="test-title">Title</label>
             <input

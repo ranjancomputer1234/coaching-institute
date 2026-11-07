@@ -13,6 +13,7 @@ const visibleStatuses: LiveClassStatus[] = [
   LiveClassStatus.reconnecting,
   LiveClassStatus.ended,
   LiveClassStatus.cancelled,
+  LiveClassStatus.provider_unavailable,
 ];
 
 @Injectable()

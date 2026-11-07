@@ -69,6 +69,7 @@ export function LiveClassesPage() {
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [title, setTitle] = useState('');
+  const [hostName, setHostName] = useState('');
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
   const [batchId, setBatchId] = useState('');
@@ -147,6 +148,7 @@ export function LiveClassesPage() {
         method: 'POST',
         body: JSON.stringify({
           title,
+          hostName: hostName.trim() || undefined,
           startsAt: new Date(startsAt).toISOString(),
           endsAt: new Date(endsAt).toISOString(),
           batchId: batchId || undefined,
@@ -328,6 +330,15 @@ export function LiveClassesPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="live-host">Instructor</label>
+            <input
+              id="live-host"
+              value={hostName}
+              onChange={(e) => setHostName(e.target.value)}
+              placeholder="RACI Faculty"
             />
           </div>
           <div className="field">
