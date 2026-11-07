@@ -37,15 +37,11 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
--- LiveClassStatus enum extensions
-DO $$ BEGIN
-  ALTER TYPE "LiveClassStatus" ADD VALUE IF NOT EXISTS 'starting';
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-DO $$ BEGIN
-  ALTER TYPE "LiveClassStatus" ADD VALUE IF NOT EXISTS 'reconnecting';
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+-- LiveClassStatus enum extensions.
+-- Top-level ALTER TYPE so Prisma can apply them outside a transaction.
+-- ADD VALUE cannot run inside a DO block or a transaction.
+ALTER TYPE "LiveClassStatus" ADD VALUE IF NOT EXISTS 'starting';
+ALTER TYPE "LiveClassStatus" ADD VALUE IF NOT EXISTS 'reconnecting';
 
 -- CreateTable ContentCategory
 CREATE TABLE IF NOT EXISTS "ContentCategory" (
