@@ -9,6 +9,6 @@ import { ContentAccessModule } from '../content-access/content-access.module';
   imports: [ContentAccessModule],
   controllers: [ResourcesController],
   providers: [ResourcesService, MuxService, CloudinaryService],
-  exports: [ResourcesService],
+  exports: [ResourcesService, CloudinaryService],
 })
 export class ResourcesModule {}

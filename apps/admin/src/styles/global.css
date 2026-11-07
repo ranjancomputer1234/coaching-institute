@@ -358,6 +358,21 @@ tbody tr {
   color: var(--muted);
 }
 
+.field-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.banner-thumb {
+  width: 108px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #eef1f8;
+  display: block;
+}
+
 .small {
   font-size: 0.8rem;
   line-height: 1.4;

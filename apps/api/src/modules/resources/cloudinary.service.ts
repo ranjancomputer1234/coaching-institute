@@ -67,6 +67,27 @@ export class CloudinaryService {
    * straight to Cloudinary. `publicId` embeds the resource id + random suffix
    * so the delivery URL is unguessable enough for a backup path.
    */
+  /** Signed slot for a banner image. The browser POSTs the file to Cloudinary. */
+  createSignedImageUpload() {
+    this.assertConfigured();
+    const folder = 'redi/banners';
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const publicId = `banner_${timestamp}_${Math.random().toString(36).slice(2, 8)}`;
+    const params: Record<string, string> = {
+      folder,
+      public_id: publicId,
+      timestamp,
+    };
+    return {
+      uploadUrl: `https://api.cloudinary.com/v1_1/${this.cloudName()}/image/upload`,
+      formFields: {
+        ...params,
+        api_key: this.config.get<string>('CLOUDINARY_API_KEY')!,
+        signature: this.sign(params),
+      },
+    };
+  }
+
   createSignedUpload(publicId: string) {
     this.assertConfigured();
     const folder =

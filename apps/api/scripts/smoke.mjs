@@ -229,7 +229,7 @@ async function main() {
   await call('GET', '/admin/banners', { token: at });
   const banner = await call('POST', '/admin/banners', {
     token: at,
-    body: { campaignName: `Smoke ${run}`, title: 'Smoke banner', placement: 'hero', targetKind: 'course', targetRef: courseId },
+    body: { campaignName: `Smoke ${run}`, title: 'Smoke banner', placement: 'hero', targetKind: 'course', targetRef: courseId, imageUrl: 'https://example.com/banner.jpg' },
   });
   await call('GET', `/admin/banners/${banner?.id}`, { token: at });
   await call('PATCH', `/admin/banners/${banner?.id}`, { token: at, body: { subtitle: 'Updated' } });

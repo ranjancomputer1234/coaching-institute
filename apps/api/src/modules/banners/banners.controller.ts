@@ -29,6 +29,12 @@ export class BannersController {
     return this.bannersService.findAll();
   }
 
+  @Post('image-uploads')
+  @RequirePermissions('banners.manage')
+  imageUpload() {
+    return this.bannersService.imageUploadSlot();
+  }
+
   @Get(':id')
   @RequirePermissions('banners.manage')
   findOne(@Param('id') id: string) {

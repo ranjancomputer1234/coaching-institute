@@ -6,6 +6,7 @@ import {
 import { ContentLifecycle, AuditSeverity } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { CloudinaryService } from '../resources/cloudinary.service';
 import { CreateBannerDto, UpdateBannerDto } from './dto/banner.dto';
 
 type Actor = { userId: string; email?: string };
@@ -17,7 +18,12 @@ export class BannersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly cloudinary: CloudinaryService,
   ) {}
+
+  imageUploadSlot() {
+    return this.cloudinary.createSignedImageUpload();
+  }
 
   findAll() {
     return this.prisma.banner.findMany({
@@ -125,6 +131,14 @@ export class BannersService {
   async publish(id: string, actor: Actor) {
     const before = await this.findOne(id);
     this.assertTarget(before.targetKind, before.targetRef);
+    const image = before.imageUrl?.trim() ?? '';
+    if (!image.startsWith('https://')) {
+      throw new BadRequestException({
+        code: 'IMAGE_REQUIRED',
+        message: 'Add a public https image before publishing this banner',
+        fieldErrors: { imageUrl: ['required'] },
+      });
+    }
     const banner = await this.prisma.banner.update({
       where: { id },
       data: {
