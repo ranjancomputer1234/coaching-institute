@@ -378,7 +378,10 @@ export class ResourcesService {
       },
     });
     if (dto.previewAllowed !== undefined) {
-      await this.publishLessonForVideo(resource.lessonId, resource.previewAllowed);
+      await this.publishLessonForVideo(
+        resource.lessonId,
+        resource.previewAllowed,
+      );
     }
     return resource;
   }
@@ -587,7 +590,9 @@ export class ResourcesService {
       });
     }
     if (current.provider === 'cloudinary') {
-      const playable = await this.cloudinary.playableDelivery(current.playbackId);
+      const playable = await this.cloudinary.playableDelivery(
+        current.playbackId,
+      );
       return {
         resourceId,
         provider: 'cloudinary',
@@ -614,15 +619,17 @@ export class ResourcesService {
    * Cloudinary prefers a URL that responds (MP4 when HLS was not generated).
    * A public https storage key is used when there is no provider asset.
    */
-  async playbackForResource(resource: {
-    kind: ResourceKind;
-    mediaAsset: {
-      provider?: string | null;
-      providerStatus?: string | null;
-      providerPlaybackId?: string | null;
-      storageKey?: string | null;
-    } | null;
-  } | null): Promise<{
+  async playbackForResource(
+    resource: {
+      kind: ResourceKind;
+      mediaAsset: {
+        provider?: string | null;
+        providerStatus?: string | null;
+        providerPlaybackId?: string | null;
+        storageKey?: string | null;
+      } | null;
+    } | null,
+  ): Promise<{
     type: string;
     url: string;
     fallbackUrl: string | null;
@@ -679,8 +686,7 @@ export class ResourcesService {
         fieldErrors: {},
       });
     }
-    const canOpen =
-      access.granted && (access.canDownload || access.canPreview);
+    const canOpen = access.granted && (access.canDownload || access.canPreview);
     if (!canOpen) {
       throw new ForbiddenException({
         code: 'ACCESS_DENIED',

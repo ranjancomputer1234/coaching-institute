@@ -3,7 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ContentLifecycle, CourseCommercialMode, Prisma, ResourceKind } from '@prisma/client';
+import {
+  ContentLifecycle,
+  CourseCommercialMode,
+  Prisma,
+  ResourceKind,
+} from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { ContentAccessService } from '../content-access/content-access.service';
 import { ResourcesService } from '../resources/resources.service';
@@ -432,8 +437,33 @@ export class LearnerCatalogueService {
       lesson.course.commercialMode,
       learnerId,
     );
-    const { course: _course, ...row } = lesson;
-    const [presented] = await this.presentLessons([row], access.granted);
+    const {
+      id,
+      courseId,
+      title,
+      description,
+      sortOrder,
+      durationMinutes,
+      contentType,
+      isPreview,
+      mediaUrl,
+    } = lesson;
+    const [presented] = await this.presentLessons(
+      [
+        {
+          id,
+          courseId,
+          title,
+          description,
+          sortOrder,
+          durationMinutes,
+          contentType,
+          isPreview,
+          mediaUrl,
+        },
+      ],
+      access.granted,
+    );
     return presented;
   }
 
