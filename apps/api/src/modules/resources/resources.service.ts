@@ -377,7 +377,35 @@ export class ResourcesService {
         previewAllowed: resource.previewAllowed,
       },
     });
+    if (dto.previewAllowed !== undefined) {
+      await this.publishLessonForVideo(resource.lessonId, resource.previewAllowed);
+    }
     return resource;
+  }
+
+  /**
+   * A lesson on a published course has to be published or the phone hides it.
+   * `preview` true/false writes the lesson flag. `undefined` leaves it alone.
+   */
+  private async publishLessonForVideo(
+    lessonId: string | null,
+    preview?: boolean,
+  ) {
+    if (!lessonId) return;
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+      select: { course: { select: { lifecycle: true } } },
+    });
+    if (!lesson) return;
+    const courseLive = lesson.course.lifecycle === ContentLifecycle.published;
+    if (!courseLive && preview === undefined) return;
+    await this.prisma.lesson.update({
+      where: { id: lessonId },
+      data: {
+        ...(courseLive ? { lifecycle: ContentLifecycle.published } : {}),
+        ...(preview !== undefined ? { isPreview: preview } : {}),
+      },
+    });
   }
 
   private async createDraftVideoResource(
@@ -530,6 +558,10 @@ export class ResourcesService {
           publishedAt: new Date(),
         },
       });
+      await this.publishLessonForVideo(
+        resource.lessonId,
+        resource.previewAllowed ? true : undefined,
+      );
     }
     return {
       resourceId,
@@ -555,13 +587,14 @@ export class ResourcesService {
       });
     }
     if (current.provider === 'cloudinary') {
+      const playable = await this.cloudinary.playableDelivery(current.playbackId);
       return {
         resourceId,
         provider: 'cloudinary',
         status: 'ready',
         playbackId: current.playbackId,
-        playbackUrl: this.cloudinary.playbackUrl(current.playbackId),
-        fallbackUrl: this.cloudinary.fallbackMp4Url(current.playbackId),
+        playbackUrl: playable.url,
+        fallbackUrl: playable.fallbackUrl,
         expiresInSeconds: null,
       };
     }
@@ -576,35 +609,55 @@ export class ResourcesService {
     };
   }
 
-  /** Learner playback for a ready provider video, or null when not playable yet. */
-  private learnerPlayback(resource: {
+  /**
+   * Playable stream for a video resource.
+   * Cloudinary prefers a URL that responds (MP4 when HLS was not generated).
+   * A public https storage key is used when there is no provider asset.
+   */
+  async playbackForResource(resource: {
     kind: ResourceKind;
     mediaAsset: {
       provider?: string | null;
       providerStatus?: string | null;
       providerPlaybackId?: string | null;
+      storageKey?: string | null;
     } | null;
-  }): { type: string; url: string; expiresInSeconds: number | null } | null {
+  } | null): Promise<{
+    type: string;
+    url: string;
+    fallbackUrl: string | null;
+    expiresInSeconds: number | null;
+  } | null> {
+    if (!resource || resource.kind !== ResourceKind.video) return null;
     const media = resource.mediaAsset;
-    if (
-      resource.kind !== ResourceKind.video ||
-      media?.providerStatus !== 'ready' ||
-      !media?.providerPlaybackId
-    ) {
-      return null;
+    if (media?.providerStatus === 'ready' && media.providerPlaybackId) {
+      if (media.provider === 'cloudinary') {
+        const playable = await this.cloudinary.playableDelivery(
+          media.providerPlaybackId,
+        );
+        return {
+          type: playable.hls ? 'cloudinary_hls' : 'progressive_mp4',
+          url: playable.url,
+          fallbackUrl: playable.fallbackUrl,
+          expiresInSeconds: null,
+        };
+      }
+      if (media.provider === 'mux' && this.mux.isSigningConfigured()) {
+        return {
+          type: 'mux_hls',
+          url: this.mux.signedPlaybackUrl(media.providerPlaybackId),
+          fallbackUrl: null,
+          expiresInSeconds: 3600,
+        };
+      }
     }
-    if (media.provider === 'cloudinary') {
+    const key = media?.storageKey?.trim() ?? '';
+    if (/^https?:\/\//i.test(key)) {
       return {
-        type: 'cloudinary_hls',
-        url: this.cloudinary.playbackUrl(media.providerPlaybackId),
+        type: key.includes('.m3u8') ? 'hls' : 'progressive_mp4',
+        url: key,
+        fallbackUrl: null,
         expiresInSeconds: null,
-      };
-    }
-    if (media.provider === 'mux' && this.mux.isSigningConfigured()) {
-      return {
-        type: 'mux_hls',
-        url: this.mux.signedPlaybackUrl(media.providerPlaybackId),
-        expiresInSeconds: 3600,
       };
     }
     return null;
@@ -626,7 +679,9 @@ export class ResourcesService {
         fieldErrors: {},
       });
     }
-    if (!access.granted || !access.canDownload) {
+    const canOpen =
+      access.granted && (access.canDownload || access.canPreview);
+    if (!canOpen) {
       throw new ForbiddenException({
         code: 'ACCESS_DENIED',
         message: access.reason ?? 'Download not permitted',
@@ -740,16 +795,12 @@ export class ResourcesService {
       },
       playback:
         resource.kind === ResourceKind.video
-          ? (() => {
-              const playback = this.learnerPlayback(resource);
-              return playback
-                ? playback
-                : {
-                    type: 'video_hls',
-                    url: null,
-                    status: 'not_ready_or_signing_not_configured',
-                  };
-            })()
+          ? ((await this.playbackForResource(resource)) ?? {
+              type: 'video_hls',
+              url: null,
+              fallbackUrl: null,
+              status: 'not_ready_or_signing_not_configured',
+            })
           : null,
       delivery: {
         method: 'https',

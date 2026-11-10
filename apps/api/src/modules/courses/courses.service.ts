@@ -134,6 +134,15 @@ export class CoursesService {
         revision: { increment: 1 },
       },
     });
+    await this.prisma.lesson.updateMany({
+      where: {
+        courseId: id,
+        lifecycle: {
+          notIn: [ContentLifecycle.unpublished, ContentLifecycle.archived],
+        },
+      },
+      data: { lifecycle: ContentLifecycle.published },
+    });
     await this.audit.write({
       actorId: actor.userId,
       actorDisplay: actor.email,
@@ -170,7 +179,7 @@ export class CoursesService {
   }
 
   async addLesson(courseId: string, dto: CreateLessonDto, actor: Actor) {
-    await this.findOne(courseId);
+    const course = await this.findOne(courseId);
     let sortOrder = dto.sortOrder;
     if (sortOrder === undefined) {
       const last = await this.prisma.lesson.aggregate({
@@ -188,6 +197,10 @@ export class CoursesService {
         durationMinutes: dto.durationMinutes,
         contentType: dto.contentType ?? 'video',
         isPreview: dto.isPreview ?? false,
+        lifecycle:
+          course.lifecycle === ContentLifecycle.published
+            ? ContentLifecycle.published
+            : ContentLifecycle.draft,
       },
     });
     await this.audit.write({

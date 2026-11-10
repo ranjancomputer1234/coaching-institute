@@ -78,14 +78,22 @@ export class LearnerCatalogueController {
     return this.catalogue.enroll(id, user.learnerId);
   }
 
+  @UseGuards(OptionalLearnerJwtAuthGuard)
   @Get('courses/:id/lessons')
-  getLessons(@Param('id') id: string) {
-    return this.catalogue.getLessons(id);
+  getLessons(
+    @Param('id') id: string,
+    @CurrentUser() user?: { learnerId: string } | null,
+  ) {
+    return this.catalogue.getLessons(id, user?.learnerId);
   }
 
+  @UseGuards(OptionalLearnerJwtAuthGuard)
   @Get('lessons/:id')
-  getLesson(@Param('id') id: string) {
-    return this.catalogue.getLesson(id);
+  getLesson(
+    @Param('id') id: string,
+    @CurrentUser() user?: { learnerId: string } | null,
+  ) {
+    return this.catalogue.getLesson(id, user?.learnerId);
   }
 
   @UseGuards(LearnerJwtAuthGuard)

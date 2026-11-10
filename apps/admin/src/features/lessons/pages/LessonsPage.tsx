@@ -120,13 +120,27 @@ function uploadFileWithProgress(
   });
 }
 
+function isHlsUrl(src: string) {
+  return src.includes('.m3u8');
+}
+
 /** Plays provider HLS: native on Safari, hls.js elsewhere, MP4 as last resort. */
 function HlsPlayer({ src, fallbackSrc }: { src: string; fallbackSrc?: string | null }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const video = ref.current;
     if (!video) return;
+    setError(null);
+    const playFile = (url: string) => {
+      video.src = url;
+      void video.play().catch(() => undefined);
+    };
+    if (!isHlsUrl(src)) {
+      playFile(src);
+      return;
+    }
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = src;
       return;
@@ -136,24 +150,37 @@ function HlsPlayer({ src, fallbackSrc }: { src: string; fallbackSrc?: string | n
       hls.loadSource(src);
       hls.attachMedia(video);
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal && fallbackSrc) {
-          hls.destroy();
-          video.src = fallbackSrc;
-          void video.play().catch(() => undefined);
+        if (!data.fatal) return;
+        hls.destroy();
+        if (fallbackSrc) {
+          playFile(fallbackSrc);
+          return;
         }
+        setError('This preview could not be played.');
       });
       return () => hls.destroy();
     }
-    video.src = fallbackSrc ?? src;
+    if (fallbackSrc) {
+      playFile(fallbackSrc);
+      return;
+    }
+    setError('This browser cannot play the preview stream.');
   }, [src, fallbackSrc]);
 
   return (
-    <video
-      ref={ref}
-      controls
-      playsInline
-      style={{ width: '100%', maxWidth: '100%', background: '#000', borderRadius: 8 }}
-    />
+    <div>
+      <video
+        ref={ref}
+        controls
+        playsInline
+        style={{ width: '100%', maxWidth: '100%', background: '#000', borderRadius: 8 }}
+      />
+      {error ? (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

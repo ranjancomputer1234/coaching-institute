@@ -3,14 +3,34 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ContentLifecycle, CourseCommercialMode, Prisma } from '@prisma/client';
+import { ContentLifecycle, CourseCommercialMode, Prisma, ResourceKind } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { ContentAccessService } from '../content-access/content-access.service';
+import { ResourcesService } from '../resources/resources.service';
 import { LessonProgressDto } from './dto/learning.dto';
 import { parseCursorTake, toPage } from '../../common/utils/pagination';
 import { resolveCommercialAccess } from '../../common/utils/content-access';
 
 const published = { lifecycle: ContentLifecycle.published };
+
+/** Draft lessons on a live course were invisible in the app, including previews. */
+const visibleLesson = {
+  lifecycle: {
+    notIn: [ContentLifecycle.unpublished, ContentLifecycle.archived],
+  },
+};
+
+const lessonFields = {
+  id: true,
+  courseId: true,
+  title: true,
+  description: true,
+  sortOrder: true,
+  durationMinutes: true,
+  contentType: true,
+  isPreview: true,
+  mediaUrl: true,
+} satisfies Prisma.LessonSelect;
 
 const courseListSelect = {
   id: true,
@@ -31,7 +51,81 @@ export class LearnerCatalogueService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: ContentAccessService,
+    private readonly resources: ResourcesService,
   ) {}
+
+  private directPlayback(url: string | null | undefined) {
+    const value = url?.trim() ?? '';
+    if (!/^https?:\/\//i.test(value)) return null;
+    return {
+      type: value.includes('.m3u8') ? 'hls' : 'progressive_mp4',
+      url: value,
+      fallbackUrl: null as string | null,
+      expiresInSeconds: null as number | null,
+    };
+  }
+
+  /**
+   * Attach the lesson video. Playback is included for a preview lesson, and
+   * for every lesson when the viewer already has the course.
+   */
+  private async presentLessons<
+    T extends {
+      id: string;
+      isPreview: boolean;
+      mediaUrl: string | null;
+    },
+  >(lessons: T[], courseGranted: boolean) {
+    const ids = lessons.map((lesson) => lesson.id);
+    const videos =
+      ids.length === 0
+        ? []
+        : await this.prisma.resource.findMany({
+            where: {
+              lessonId: { in: ids },
+              kind: ResourceKind.video,
+              lifecycle: {
+                notIn: [
+                  ContentLifecycle.unpublished,
+                  ContentLifecycle.archived,
+                ],
+              },
+            },
+            include: { mediaAsset: true },
+            orderBy: { createdAt: 'asc' },
+          });
+    const byLesson = new Map<string, typeof videos>();
+    for (const video of videos) {
+      if (!video.lessonId) continue;
+      const list = byLesson.get(video.lessonId) ?? [];
+      list.push(video);
+      byLesson.set(video.lessonId, list);
+    }
+
+    return Promise.all(
+      lessons.map(async (lesson) => {
+        const attached = byLesson.get(lesson.id) ?? [];
+        const playableFlags = await Promise.all(
+          attached.map((video) => this.resources.playbackForResource(video)),
+        );
+        const playableIndex = playableFlags.findIndex((item) => item);
+        const video =
+          (playableIndex >= 0 ? attached[playableIndex] : attached[0]) ?? null;
+        const preview = lesson.isPreview || Boolean(video?.previewAllowed);
+        const playback =
+          (playableIndex >= 0 ? playableFlags[playableIndex] : null) ??
+          this.directPlayback(lesson.mediaUrl);
+        const { mediaUrl, ...safe } = lesson;
+        return {
+          ...safe,
+          isPreview: preview,
+          hasMedia: Boolean(video || mediaUrl),
+          resourceId: video?.id ?? null,
+          playback: courseGranted || preview ? playback : null,
+        };
+      }),
+    );
+  }
 
   private window(now = new Date()) {
     return {
@@ -259,18 +353,9 @@ export class LearnerCatalogueService {
       },
       include: {
         lessons: {
-          where: published,
+          where: visibleLesson,
           orderBy: { sortOrder: 'asc' },
-          select: {
-            id: true,
-            courseId: true,
-            title: true,
-            description: true,
-            sortOrder: true,
-            durationMinutes: true,
-            contentType: true,
-            isPreview: true,
-          },
+          select: lessonFields,
         },
       },
     });
@@ -286,7 +371,8 @@ export class LearnerCatalogueService {
       course.commercialMode,
       learnerId,
     );
-    return { ...course, access };
+    const lessons = await this.presentLessons(course.lessons, access.granted);
+    return { ...course, lessons, access };
   }
 
   async enroll(courseId: string, learnerId: string) {
@@ -321,37 +407,17 @@ export class LearnerCatalogueService {
     });
   }
 
-  async getLessons(courseId: string) {
-    await this.getCourse(courseId);
-    return this.prisma.lesson.findMany({
-      where: { courseId, ...published },
-      orderBy: { sortOrder: 'asc' },
-      select: {
-        id: true,
-        courseId: true,
-        title: true,
-        description: true,
-        sortOrder: true,
-        durationMinutes: true,
-        contentType: true,
-        isPreview: true,
-      },
-    });
+  async getLessons(courseId: string, learnerId?: string) {
+    const course = await this.getCourse(courseId, learnerId);
+    return course.lessons;
   }
 
-  async getLesson(id: string) {
+  async getLesson(id: string, learnerId?: string) {
     const lesson = await this.prisma.lesson.findFirst({
-      where: { id, ...published, course: published },
+      where: { id, ...visibleLesson, course: published },
       select: {
-        id: true,
-        courseId: true,
-        title: true,
-        description: true,
-        sortOrder: true,
-        durationMinutes: true,
-        contentType: true,
-        isPreview: true,
-        mediaUrl: true,
+        ...lessonFields,
+        course: { select: { id: true, commercialMode: true } },
       },
     });
     if (!lesson) {
@@ -361,8 +427,14 @@ export class LearnerCatalogueService {
         fieldErrors: {},
       });
     }
-    const { mediaUrl, ...safe } = lesson;
-    return { ...safe, hasMedia: Boolean(mediaUrl) };
+    const access = await this.courseAccess(
+      lesson.course.id,
+      lesson.course.commercialMode,
+      learnerId,
+    );
+    const { course: _course, ...row } = lesson;
+    const [presented] = await this.presentLessons([row], access.granted);
+    return presented;
   }
 
   async saveProgress(

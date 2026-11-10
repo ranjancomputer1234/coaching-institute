@@ -149,4 +149,42 @@ export class CloudinaryService {
   fallbackMp4Url(publicId: string): string {
     return `https://res.cloudinary.com/${this.cloudName()}/video/upload/${publicId}.mp4`;
   }
+
+  /**
+   * URL a player can actually open. Many Cloudinary plans never finish the
+   * sp_hd HLS copy, so a broken .m3u8 is replaced with the progressive MP4.
+   */
+  async playableDelivery(publicId: string): Promise<{
+    hls: boolean;
+    url: string;
+    fallbackUrl: string | null;
+  }> {
+    const mp4 = this.fallbackMp4Url(publicId);
+    const hls = this.playbackUrl(publicId);
+    const cached = this.playable.get(publicId);
+    if (cached && Date.now() - cached.at < 10 * 60 * 1000) {
+      return cached.hls
+        ? { hls: true, url: hls, fallbackUrl: mp4 }
+        : { hls: false, url: mp4, fallbackUrl: null };
+    }
+    const hlsOk = await this.reachable(hls);
+    this.playable.set(publicId, { at: Date.now(), hls: hlsOk });
+    return hlsOk
+      ? { hls: true, url: hls, fallbackUrl: mp4 }
+      : { hls: false, url: mp4, fallbackUrl: null };
+  }
+
+  private readonly playable = new Map<string, { at: number; hls: boolean }>();
+
+  private async reachable(url: string): Promise<boolean> {
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        signal: AbortSignal.timeout(4000),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
 }
