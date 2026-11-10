@@ -437,29 +437,18 @@ export class LearnerCatalogueService {
       lesson.course.commercialMode,
       learnerId,
     );
-    const {
-      id,
-      courseId,
-      title,
-      description,
-      sortOrder,
-      durationMinutes,
-      contentType,
-      isPreview,
-      mediaUrl,
-    } = lesson;
     const [presented] = await this.presentLessons(
       [
         {
-          id,
-          courseId,
-          title,
-          description,
-          sortOrder,
-          durationMinutes,
-          contentType,
-          isPreview,
-          mediaUrl,
+          id: lesson.id,
+          courseId: lesson.courseId,
+          title: lesson.title,
+          description: lesson.description,
+          sortOrder: lesson.sortOrder,
+          durationMinutes: lesson.durationMinutes,
+          contentType: lesson.contentType,
+          isPreview: lesson.isPreview,
+          mediaUrl: lesson.mediaUrl,
         },
       ],
       access.granted,
