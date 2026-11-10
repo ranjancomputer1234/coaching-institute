@@ -40,7 +40,7 @@ export class CloudinaryService {
       throw new ServiceUnavailableException({
         code: 'VIDEO_BACKUP_NOT_CONFIGURED',
         message:
-          'Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET in apps/api/.env (cloudinary.com → Dashboard), then restart the API.',
+          'File upload is not configured yet. Paste a public https image link. To turn on Choose File, set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET on the API.',
         fieldErrors: {},
       });
     }

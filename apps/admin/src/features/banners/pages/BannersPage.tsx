@@ -195,7 +195,7 @@ export function BannersPage() {
     } catch (error) {
       setFormError(
         error instanceof Error
-          ? `${error.message} You can still paste a public https image link.`
+          ? error.message
           : 'Image upload failed. Paste a public https image link instead.',
       );
     } finally {

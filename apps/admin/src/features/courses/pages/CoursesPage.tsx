@@ -16,10 +16,30 @@ type Course = {
   id: string;
   slug: string;
   title: string;
+  shortTitle: string | null;
+  summary: string | null;
   commercialMode: string;
   lifecycle: string;
+  coverImageUrl: string | null;
+  iconUrl: string | null;
   _count?: { lessons: number; enrollments: number };
 };
+
+async function uploadCourseImage(file: File): Promise<string> {
+  const slot = await apiFetch<{ uploadUrl: string; formFields: Record<string, string> }>(
+    '/admin/courses/image-uploads',
+    { method: 'POST' },
+  );
+  const body = new FormData();
+  Object.entries(slot.formFields).forEach(([key, value]) => body.append(key, value));
+  body.append('file', file);
+  const response = await fetch(slot.uploadUrl, { method: 'POST', body });
+  const payload = (await response.json()) as { secure_url?: string; error?: { message?: string } };
+  if (!response.ok || !payload.secure_url) {
+    throw new Error(payload.error?.message || 'Image upload failed');
+  }
+  return payload.secure_url;
+}
 
 export function CoursesPage() {
   const { hasPermission } = useAuth();
@@ -31,6 +51,10 @@ export function CoursesPage() {
   const [summary, setSummary] = useState('');
   const [commercialMode, setCommercialMode] = useState('free');
   const [iconUrl, setIconUrl] = useState('');
+  const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [editing, setEditing] = useState<Course | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [lessonMinutes, setLessonMinutes] = useState('');
   const [lessonPreview, setLessonPreview] = useState(false);
   const [lessonCourse, setLessonCourse] = useState<Course | null>(null);
@@ -56,6 +80,7 @@ export function CoursesPage() {
           shortTitle: shortTitle.trim() || undefined,
           summary: summary.trim() || undefined,
           iconUrl: iconUrl.trim() || undefined,
+          coverImageUrl: coverImageUrl.trim() || undefined,
         }),
       }),
     onSuccess: () => {
@@ -65,6 +90,47 @@ export function CoursesPage() {
       queryClient.invalidateQueries({ queryKey: ['courses'] });
     },
   });
+
+  const saveCover = useMutation({
+    mutationFn: () => {
+      if (!editing) throw new Error('Choose a course');
+      return apiFetch(`/admin/courses/${editing.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          shortTitle: shortTitle.trim() || undefined,
+          summary: summary.trim() || undefined,
+          commercialMode,
+          iconUrl: iconUrl.trim() || undefined,
+          coverImageUrl: coverImageUrl.trim() || undefined,
+        }),
+      });
+    },
+    onSuccess: () => {
+      setEditing(null);
+      setFormError(null);
+      queryClient.invalidateQueries({ queryKey: ['courses'] });
+    },
+    onError: (error) => {
+      setFormError(error instanceof Error ? error.message : 'Could not save the cover');
+    },
+  });
+
+  const onCoverFile = async (file: File | undefined) => {
+    if (!file) return;
+    setFormError(null);
+    setUploading(true);
+    try {
+      setCoverImageUrl(await uploadCourseImage(file));
+    } catch (error) {
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : 'Image upload failed. Paste a public https image link instead.',
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const publish = useMutation({
     mutationFn: (id: string) =>
@@ -167,6 +233,7 @@ export function CoursesPage() {
           <table>
             <thead>
               <tr>
+                <th>Cover</th>
                 <th>Title</th>
                 <th>Slug</th>
                 <th>Mode</th>
@@ -178,13 +245,20 @@ export function CoursesPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="muted">
+                  <td colSpan={7} className="muted">
                     No rows match filters.
                   </td>
                 </tr>
               ) : (
                 filtered.map((course) => (
                   <tr key={course.id}>
+                    <td>
+                      {course.coverImageUrl ? (
+                        <img className="banner-thumb" src={course.coverImageUrl} alt="" />
+                      ) : (
+                        <span className="muted">No cover</span>
+                      )}
+                    </td>
                     <td>{course.title}</td>
                     <td className="muted">{course.slug}</td>
                     <td>{course.commercialMode}</td>
@@ -193,6 +267,23 @@ export function CoursesPage() {
                     </td>
                     <td>{course._count?.lessons ?? 0}</td>
                     <td className="action-row">
+                      {hasPermission('content.edit') ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => {
+                            setEditing(course);
+                            setShortTitle(course.shortTitle ?? '');
+                            setSummary(course.summary ?? '');
+                            setCommercialMode(course.commercialMode || 'free');
+                            setIconUrl(course.iconUrl ?? '');
+                            setCoverImageUrl(course.coverImageUrl ?? '');
+                            setFormError(null);
+                          }}
+                        >
+                          Cover
+                        </button>
+                      ) : null}
                       {hasPermission('content.edit') ? (
                         <button
                           type="button"
@@ -273,6 +364,31 @@ export function CoursesPage() {
             </select>
           </div>
           <div className="field">
+            <label htmlFor="course-cover">Subject cover image</label>
+            <input
+              id="course-cover-file"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                void onCoverFile(file);
+              }}
+            />
+            <input
+              id="course-cover"
+              value={coverImageUrl}
+              onChange={(e) => setCoverImageUrl(e.target.value)}
+              placeholder="https:// cover for this subject"
+            />
+            <p className="field-hint">
+              This is the large picture on the course screen. Use a different image for each subject.
+            </p>
+            {coverImageUrl.trim().startsWith('https://') ? (
+              <img className="banner-thumb" src={coverImageUrl.trim()} alt="" />
+            ) : null}
+          </div>
+          <div className="field">
             <label htmlFor="course-icon">Icon image link</label>
             <input
               id="course-icon"
@@ -293,9 +409,58 @@ export function CoursesPage() {
           <button type="submit" className="btn" disabled={create.isPending}>
             Create draft
           </button>
+          {formError ? <p className="error">{formError}</p> : null}
           {create.error instanceof Error ? (
             <p className="error">{create.error.message}</p>
           ) : null}
+        </form>
+      </ContentDrawer>
+
+      <ContentDrawer
+        open={editing !== null}
+        onClose={() => {
+          if (saveCover.isPending) return;
+          setEditing(null);
+        }}
+        title={editing ? `Cover — ${editing.title}` : 'Subject cover'}
+      >
+        <form
+          className="stack-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setFormError(null);
+            saveCover.mutate();
+          }}
+        >
+          <p className="field-hint">
+            The phone shows this picture at the top of {editing?.title}. Pick an image that matches this subject.
+          </p>
+          <div className="field">
+            <label htmlFor="edit-cover-file">Cover image</label>
+            <input
+              id="edit-cover-file"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                void onCoverFile(file);
+              }}
+            />
+            <input
+              id="edit-cover"
+              value={coverImageUrl}
+              onChange={(event) => setCoverImageUrl(event.target.value)}
+              placeholder="https://"
+            />
+            {coverImageUrl.trim().startsWith('https://') ? (
+              <img className="banner-thumb" src={coverImageUrl.trim()} alt="" />
+            ) : null}
+          </div>
+          {formError ? <p className="error">{formError}</p> : null}
+          <button className="btn" type="submit" disabled={saveCover.isPending || uploading}>
+            {uploading ? 'Uploading image…' : 'Save cover'}
+          </button>
         </form>
       </ContentDrawer>
 

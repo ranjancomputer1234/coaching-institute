@@ -6,6 +6,7 @@ import {
 import { ContentLifecycle, AuditSeverity } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { CloudinaryService } from '../resources/cloudinary.service';
 import {
   CreateCourseDto,
   CreateLessonDto,
@@ -19,7 +20,12 @@ export class CoursesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly cloudinary: CloudinaryService,
   ) {}
+
+  imageUploadSlot() {
+    return this.cloudinary.createSignedImageUpload();
+  }
 
   findAll() {
     return this.prisma.course.findMany({

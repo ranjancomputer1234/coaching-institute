@@ -33,6 +33,12 @@ export class CoursesController {
     return this.coursesService.findAll();
   }
 
+  @Post('image-uploads')
+  @RequirePermissions('content.edit')
+  imageUpload() {
+    return this.coursesService.imageUploadSlot();
+  }
+
   @Get(':id')
   @RequirePermissions('content.edit')
   findOne(@Param('id') id: string) {
