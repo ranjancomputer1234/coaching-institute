@@ -19,7 +19,13 @@ type Campaign = {
   status: string;
   providerStatus: string;
   failureReason: string | null;
+  category?: string;
+  recipientCount?: number;
 };
+
+type SendResult = Campaign & { inboxCreated?: number };
+
+const CATEGORIES = ['classes', 'tests', 'news', 'offers', 'system'] as const;
 
 export function NotificationsPage() {
   const { hasPermission } = useAuth();
@@ -30,6 +36,11 @@ export function NotificationsPage() {
   const [body, setBody] = useState('');
   const [audience, setAudience] = useState('single');
   const [audienceRef, setAudienceRef] = useState('');
+  const [category, setCategory] = useState<string>('system');
+  const [actionLabel, setActionLabel] = useState('');
+  const [targetKind, setTargetKind] = useState('');
+  const [targetRef, setTargetRef] = useState('');
+  const [sendNote, setSendNote] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [audienceFilter, setAudienceFilter] = useState('');
@@ -48,12 +59,20 @@ export function NotificationsPage() {
           body,
           audience,
           audienceRef: audienceRef || undefined,
+          category,
+          actionLabel: actionLabel || undefined,
+          targetKind: targetKind || undefined,
+          targetRef: targetRef || undefined,
         }),
       }),
     onSuccess: () => {
       setTitle('');
       setBody('');
       setAudienceRef('');
+      setCategory('system');
+      setActionLabel('');
+      setTargetKind('');
+      setTargetRef('');
       setDrawerOpen(false);
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
@@ -61,8 +80,15 @@ export function NotificationsPage() {
 
   const send = useMutation({
     mutationFn: (id: string) =>
-      apiFetch(`/admin/notifications/${id}/send`, { method: 'POST' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+      apiFetch<SendResult>(`/admin/notifications/${id}/send`, { method: 'POST' }),
+    onSuccess: (result) => {
+      setSendNote(
+        typeof result?.recipientCount === 'number'
+          ? `Sent to ${result.recipientCount} learner${result.recipientCount === 1 ? '' : 's'} (in-app inbox).`
+          : null,
+      );
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
   });
 
   const rows = list.data ?? [];
@@ -88,7 +114,7 @@ export function NotificationsPage() {
       <div className="page-header">
         <div>
           <h1>Notifications</h1>
-          <p>Draft campaigns. Send stays unsent until a push provider is configured.</p>
+          <p>Send delivers to each learner's in-app inbox. Push delivery needs a configured provider.</p>
         </div>
         <PageHeaderActions>
           <button type="button" className="btn" onClick={() => setDrawerOpen(true)}>
@@ -136,7 +162,9 @@ export function NotificationsPage() {
               <tr>
                 <th>Title</th>
                 <th>Audience</th>
+                <th>Category</th>
                 <th>Status</th>
+                <th>Recipients</th>
                 <th>Provider</th>
                 <th></th>
               </tr>
@@ -144,7 +172,7 @@ export function NotificationsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="muted">
+                  <td colSpan={7} className="muted">
                     No rows match filters.
                   </td>
                 </tr>
@@ -153,9 +181,11 @@ export function NotificationsPage() {
                   <tr key={row.id}>
                     <td>{row.title}</td>
                     <td>{row.audience}</td>
+                    <td>{row.category ?? 'system'}</td>
                     <td>
                       <StatusPill value={row.status} />
                     </td>
+                    <td>{row.recipientCount ?? 0}</td>
                     <td>{row.providerStatus}</td>
                     <td>
                       {canSend ? (
@@ -178,6 +208,7 @@ export function NotificationsPage() {
         </div>
       </PageState>
       {send.error instanceof Error ? <p className="error">{send.error.message}</p> : null}
+      {sendNote ? <p className="muted small">{sendNote}</p> : null}
 
       <ContentDrawer
         open={drawerOpen}
@@ -229,6 +260,47 @@ export function NotificationsPage() {
               value={audienceRef}
               placeholder="learner id or batch id"
               onChange={(e) => setAudienceRef(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="note-category">Category</label>
+            <select
+              id="note-category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="note-action-label">Action label (optional)</label>
+            <input
+              id="note-action-label"
+              value={actionLabel}
+              placeholder="e.g. Join class"
+              onChange={(e) => setActionLabel(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="note-target-kind">Target kind (optional)</label>
+            <input
+              id="note-target-kind"
+              value={targetKind}
+              placeholder="e.g. course, test, live"
+              onChange={(e) => setTargetKind(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="note-target-ref">Target ref (optional)</label>
+            <input
+              id="note-target-ref"
+              value={targetRef}
+              placeholder="target id"
+              onChange={(e) => setTargetRef(e.target.value)}
             />
           </div>
           <button className="btn" type="submit" disabled={create.isPending}>

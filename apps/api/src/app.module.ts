@@ -30,6 +30,7 @@ import { ExamsModule } from './modules/exams/exams.module';
 import { LearnerExamsModule } from './modules/learner-exams/learner-exams.module';
 import { LearnerEditorialModule } from './modules/learner-editorial/learner-editorial.module';
 import { LearnerLiveModule } from './modules/learner-live/learner-live.module';
+import { LearnerNotificationsModule } from './modules/learner-notifications/learner-notifications.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { LearnerLiveModule } from './modules/learner-live/learner-live.module';
     LearnerExamsModule,
     LearnerEditorialModule,
     LearnerLiveModule,
+    LearnerNotificationsModule,
     ResourcesModule,
     DocumentsModule,
     EntitlementsModule,

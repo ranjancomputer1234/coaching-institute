@@ -218,8 +218,20 @@ export class DocumentsService {
     return updated;
   }
 
-  listForLearner(learnerId: string) {
-    return this.prisma.issuedDocument.findMany({
+  private parseDetails(snapshotJson?: string | null) {
+    try {
+      const parsed = JSON.parse(snapshotJson || '{}') as Record<
+        string,
+        unknown
+      >;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  async listForLearner(learnerId: string) {
+    const rows = await this.prisma.issuedDocument.findMany({
       where: {
         learnerId,
         status: {
@@ -232,39 +244,45 @@ export class DocumentsService {
           ],
         },
       },
-      select: {
-        id: true,
-        documentType: true,
-        status: true,
-        serial: true,
-        title: true,
-        courseId: true,
-        resourceId: true,
-        issuedAt: true,
-        expiresAt: true,
-        revokedAt: true,
-        updatedAt: true,
+      include: {
+        learner: { select: { firstName: true, lastName: true } },
       },
       orderBy: { updatedAt: 'desc' },
+    });
+    return rows.map((doc) => {
+      const details = this.parseDetails(doc.snapshotJson);
+      const learnerName =
+        `${doc.learner.firstName} ${doc.learner.lastName}`.trim();
+      return {
+        id: doc.id,
+        documentType: doc.documentType,
+        status: doc.status,
+        serial: doc.serial,
+        title: doc.title,
+        courseId: doc.courseId,
+        resourceId: doc.resourceId,
+        issuedAt: doc.issuedAt,
+        expiresAt: doc.expiresAt,
+        revokedAt: doc.revokedAt,
+        updatedAt: doc.updatedAt,
+        learnerName,
+        details: {
+          ...details,
+          learnerName:
+            typeof details.learnerName === 'string'
+              ? details.learnerName
+              : learnerName,
+        },
+        shareForbidden: true,
+      };
     });
   }
 
   async getForLearner(learnerId: string, id: string) {
     const doc = await this.prisma.issuedDocument.findFirst({
       where: { id, learnerId },
-      select: {
-        id: true,
-        documentType: true,
-        status: true,
-        serial: true,
-        title: true,
-        courseId: true,
-        resourceId: true,
-        issuedAt: true,
-        expiresAt: true,
-        revokedAt: true,
-        verificationToken: true,
-        updatedAt: true,
+      include: {
+        learner: { select: { firstName: true, lastName: true } },
       },
     });
     if (!doc) {
@@ -274,8 +292,30 @@ export class DocumentsService {
         fieldErrors: {},
       });
     }
+    const details = this.parseDetails(doc.snapshotJson);
+    const learnerName =
+      `${doc.learner.firstName} ${doc.learner.lastName}`.trim();
     return {
-      ...doc,
+      id: doc.id,
+      documentType: doc.documentType,
+      status: doc.status,
+      serial: doc.serial,
+      title: doc.title,
+      courseId: doc.courseId,
+      resourceId: doc.resourceId,
+      issuedAt: doc.issuedAt,
+      expiresAt: doc.expiresAt,
+      revokedAt: doc.revokedAt,
+      verificationToken: doc.verificationToken,
+      updatedAt: doc.updatedAt,
+      learnerName,
+      details: {
+        ...details,
+        learnerName:
+          typeof details.learnerName === 'string'
+            ? details.learnerName
+            : learnerName,
+      },
       // Never expose raw PDF bytes or export URLs here.
       download: doc.resourceId
         ? {

@@ -1,10 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { ContentLifecycle, EditorialKind, Prisma } from '@prisma/client';
+import {
+  ContentLifecycle,
+  EditorialKind,
+  EntitlementState,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { parseCursorTake, toPage } from '../../common/utils/pagination';
 import {
   parseJsonArray,
   resolvePricingAccess,
+  type LearnerAccess,
 } from '../../common/utils/content-access';
 
 const published = { lifecycle: ContentLifecycle.published };
@@ -21,6 +27,37 @@ type Entry = {
 @Injectable()
 export class LearnerEditorialService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async pricingAccess(
+    pricing: string,
+    learnerId: string | undefined,
+    scopeRefs: string[],
+  ): Promise<LearnerAccess> {
+    if ((pricing ?? 'free').toLowerCase() !== 'paid' || !learnerId) {
+      return resolvePricingAccess(pricing, { learnerId });
+    }
+    const now = new Date();
+    const entitled = await this.prisma.entitlement.findFirst({
+      where: {
+        learnerId,
+        state: EntitlementState.active,
+        OR: [
+          { scopeKind: 'editorial', scopeRef: { in: scopeRefs } },
+          { scopeKind: 'category', scopeRef: { in: scopeRefs } },
+          { scopeRef: { in: scopeRefs } },
+        ],
+        AND: [
+          { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+          { startsAt: { lte: now } },
+        ],
+      },
+      select: { id: true },
+    });
+    return resolvePricingAccess(pricing, {
+      learnerId,
+      entitled: Boolean(entitled),
+    });
+  }
 
   private async listCategories(
     kind: EditorialKind,
@@ -116,7 +153,9 @@ export class LearnerEditorialService {
     const page = toPage(rows, pageSize, total);
     return {
       ...page,
-      items: page.items.map((row) => this.mapNews(row, opts.learnerId, false)),
+      items: await Promise.all(
+        page.items.map((row) => this.mapNews(row, opts.learnerId, false)),
+      ),
     };
   }
 
@@ -134,7 +173,7 @@ export class LearnerEditorialService {
     return this.mapNews(row, learnerId, true);
   }
 
-  private mapNews(
+  private async mapNews(
     row: {
       id: string;
       categoryId: string | null;
@@ -155,7 +194,11 @@ export class LearnerEditorialService {
     learnerId: string | undefined,
     includeBody: boolean,
   ) {
-    const access = resolvePricingAccess(row.pricing, { learnerId });
+    const access = await this.pricingAccess(
+      row.pricing,
+      learnerId,
+      [row.id, row.categoryId || row.category || ''].filter(Boolean),
+    );
     const tags = parseJsonArray<string>(row.tagsJson);
     const highlights = parseJsonArray<string>(row.highlightsJson);
     const body =
@@ -239,9 +282,8 @@ export class LearnerEditorialService {
     ]);
 
     const page = toPage(rows, pageSize, total);
-    return {
-      ...page,
-      items: page.items.map((row) => ({
+    const items = await Promise.all(
+      page.items.map(async (row) => ({
         id: row.id,
         title: row.title,
         summary: row.summary,
@@ -249,11 +291,10 @@ export class LearnerEditorialService {
         commercialMode: row.commercialMode,
         iconKey: row.iconKey || 'book',
         imageUrl: row.imageUrl,
-        access: resolvePricingAccess(row.pricing, {
-          learnerId: opts.learnerId,
-        }),
+        access: await this.pricingAccess(row.pricing, opts.learnerId, [row.id]),
       })),
-    };
+    );
+    return { ...page, items };
   }
 
   async getAwarenessTopic(id: string, learnerId?: string) {
@@ -267,7 +308,11 @@ export class LearnerEditorialService {
         fieldErrors: {},
       });
     }
-    const access = resolvePricingAccess(row.pricing, { learnerId });
+    const access = await this.pricingAccess(
+      row.pricing,
+      learnerId,
+      [row.id, row.categoryId || ''].filter(Boolean),
+    );
     const entries = access.granted
       ? parseJsonArray<Entry>(row.entriesJson)
       : [];

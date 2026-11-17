@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { apiFetch } from '../../../shared/api/client';
+import { useAuth } from '../../../shared/auth/AuthContext';
 import {
   distinctOptions,
   filterBySearch,
@@ -20,6 +21,9 @@ type Refund = {
 };
 
 export function RefundsPage() {
+  const { hasPermission } = useAuth();
+  const canRequest = hasPermission('payments.refund_request');
+  const canApprove = hasPermission('payments.refund_approve');
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [orderId, setOrderId] = useState('');
@@ -78,11 +82,13 @@ export function RefundsPage() {
           <h1>Refunds</h1>
           <p>Approval is recorded manually. The payment gateway is not called.</p>
         </div>
-        <PageHeaderActions>
-          <button type="button" className="btn" onClick={() => setDrawerOpen(true)}>
-            Request refund
-          </button>
-        </PageHeaderActions>
+        {canRequest ? (
+          <PageHeaderActions>
+            <button type="button" className="btn" onClick={() => setDrawerOpen(true)}>
+              Request refund
+            </button>
+          </PageHeaderActions>
+        ) : null}
       </div>
       <PageState
         loading={list.isLoading}
@@ -138,7 +144,8 @@ export function RefundsPage() {
                       <StatusPill value={row.status} />
                     </td>
                     <td>
-                      {row.status === 'pending' ? (
+                      {canApprove &&
+                      (row.status === 'pending' || row.status === 'requested') ? (
                         <button
                           className="btn btn-ghost"
                           type="button"
@@ -179,11 +186,12 @@ export function RefundsPage() {
             />
           </div>
           <div className="field">
-            <label htmlFor="refund-amount">Amount (INR)</label>
+            <label htmlFor="refund-amount">Amount (₹)</label>
             <input
               id="refund-amount"
               type="number"
               min={1}
+              step={1}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               required
@@ -196,10 +204,11 @@ export function RefundsPage() {
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               required
+              minLength={3}
             />
           </div>
           <button className="btn" type="submit" disabled={create.isPending}>
-            Request
+            Request refund
           </button>
         </form>
       </ContentDrawer>

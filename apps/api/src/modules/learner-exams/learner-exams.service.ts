@@ -1,5 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { ContentLifecycle, CourseCommercialMode, Prisma } from '@prisma/client';
+import {
+  ContentLifecycle,
+  CourseCommercialMode,
+  EntitlementState,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { parseCursorTake, toPage } from '../../common/utils/pagination';
 import {
@@ -14,7 +19,26 @@ const published = { lifecycle: ContentLifecycle.published };
 export class LearnerExamsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private mapExam(
+  private async isEntitled(learnerId: string, scopeRefs: string[]) {
+    const refs = scopeRefs.filter(Boolean);
+    if (refs.length === 0) return false;
+    const now = new Date();
+    const row = await this.prisma.entitlement.findFirst({
+      where: {
+        learnerId,
+        state: EntitlementState.active,
+        OR: [{ scopeRef: { in: refs } }, { courseId: { in: refs } }],
+        AND: [
+          { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+          { startsAt: { lte: now } },
+        ],
+      },
+      select: { id: true },
+    });
+    return Boolean(row);
+  }
+
+  private async mapExam(
     exam: {
       id: string;
       title: string;
@@ -32,6 +56,10 @@ export class LearnerExamsService {
   ) {
     const pricing =
       exam.commercialMode === CourseCommercialMode.paid ? 'paid' : 'free';
+    const entitled =
+      pricing === 'paid' && learnerId
+        ? await this.isEntitled(learnerId, [exam.id])
+        : false;
     return {
       id: exam.id,
       title: exam.title,
@@ -45,14 +73,18 @@ export class LearnerExamsService {
       testCount: exam._count?.tests ?? 0,
       learnerCount: exam.learnerCount,
       relatedExams: parseJsonArray<string>(exam.relatedExamsJson),
-      access: resolveCommercialAccess(exam.commercialMode, { learnerId }),
+      access: resolveCommercialAccess(exam.commercialMode, {
+        learnerId,
+        entitled,
+      }),
     };
   }
 
-  private mapTest(
+  private async mapTest(
     test: {
       id: string;
       examId: string | null;
+      courseId?: string | null;
       title: string;
       questionCount: number;
       durationMinutes: number;
@@ -66,6 +98,14 @@ export class LearnerExamsService {
     },
     learnerId?: string,
   ) {
+    const entitled =
+      (test.pricing ?? 'free').toLowerCase() === 'paid' && learnerId
+        ? await this.isEntitled(learnerId, [
+            test.id,
+            test.examId ?? '',
+            test.courseId ?? '',
+          ])
+        : false;
     return {
       id: test.id,
       examId: test.examId,
@@ -79,7 +119,7 @@ export class LearnerExamsService {
         test.negativeMarkingLabel ?? (test.negativeMarking ? '-0.25' : '0'),
       passThreshold: test.passThreshold,
       attemptLimit: test.attemptLimit,
-      access: resolvePricingAccess(test.pricing, { learnerId }),
+      access: resolvePricingAccess(test.pricing, { learnerId, entitled }),
     };
   }
 
@@ -128,7 +168,9 @@ export class LearnerExamsService {
     const page = toPage(rows, pageSize, total);
     return {
       ...page,
-      items: page.items.map((exam) => this.mapExam(exam, opts.learnerId)),
+      items: await Promise.all(
+        page.items.map((exam) => this.mapExam(exam, opts.learnerId)),
+      ),
     };
   }
 
@@ -158,7 +200,7 @@ export class LearnerExamsService {
       where,
       orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
     });
-    return rows.map((test) => this.mapTest(test, opts.learnerId));
+    return Promise.all(rows.map((test) => this.mapTest(test, opts.learnerId)));
   }
 
   async getTest(id: string, learnerId?: string) {

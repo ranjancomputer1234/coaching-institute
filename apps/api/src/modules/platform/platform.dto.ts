@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -205,6 +206,26 @@ export class CreateCampaignDto {
   @IsOptional()
   @IsString()
   templateId?: string;
+
+  @IsOptional()
+  @IsIn(['classes', 'tests', 'news', 'offers', 'system'])
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  actionLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  targetKind?: string;
+
+  @IsOptional()
+  @IsString()
+  targetRef?: string;
+
+  @IsOptional()
+  @IsIn(['low', 'normal', 'high'])
+  priority?: string;
 }
 
 export class CreateProductDto {

@@ -349,6 +349,79 @@ async function main() {
   await call('POST', `/admin/results/by-test/${test?.id}/publish`, { token: at, body: { reason: 'smoke bulk publish' } });
   await call('POST', `/admin/results/by-test/${test?.id}/publish`, { token: at, body: {}, expect: 400 });
 
+  // —— Learner test attempts ——
+  await call('POST', `/tests/${test?.id}/attempts`, { expect: 401 });
+  await call('GET', '/me/attempts', { expect: 401 });
+  const publicTests = await call('GET', '/tests', { token: lt });
+  const freeTest =
+    (Array.isArray(publicTests)
+      ? publicTests.find((t) => String(t.pricing).toLowerCase() === 'free' && t.questionCount > 0)
+      : undefined) ?? { id: test?.id };
+  const lAttempt = await call('POST', `/tests/${freeTest.id}/attempts`, { token: lt, body: {} });
+  check('learner attempt create returns id', Boolean(lAttempt?.id), lAttempt);
+  check(
+    'learner attempt view never leaks correct answers',
+    !JSON.stringify(lAttempt ?? {}).includes('correctOptionId'),
+    lAttempt,
+  );
+  if (lAttempt?.id) {
+    const resumed = await call('POST', `/tests/${freeTest.id}/attempts`, { token: lt, body: {} });
+    if (lAttempt.status === 'in_progress') {
+      check('in-progress attempt is resumed', resumed?.id === lAttempt.id, resumed);
+    }
+    await call('GET', `/attempts/${lAttempt.id}`, { token: lt });
+    await call('GET', `/attempts/${lAttempt.id}`, { token: arjunToken, expect: 403 });
+    const firstQ = lAttempt.questions?.[0];
+    if (firstQ?.options?.[0]) {
+      await call('PUT', `/attempts/${lAttempt.id}/answers/${firstQ.questionId}`, {
+        token: lt,
+        body: { selectedOptionId: firstQ.options[0].id },
+      });
+      await call('POST', `/attempts/${lAttempt.id}/answers/${firstQ.questionId}`, {
+        token: lt,
+        body: { optionId: firstQ.options[0].id },
+      });
+      await call('PUT', `/attempts/${lAttempt.id}/answers/${firstQ.questionId}`, {
+        token: lt,
+        body: {},
+        expect: 400,
+      });
+      await call('PUT', `/attempts/${lAttempt.id}/answers/${firstQ.questionId}`, {
+        token: lt,
+        body: { selectedOptionId: 'not-an-option' },
+        expect: 400,
+      });
+    }
+    const lSubmitted = await call('POST', `/attempts/${lAttempt.id}/submit`, { token: lt });
+    check(
+      'learner submit closes attempt',
+      ['result_unpublished', 'result_published', 'submitted', 'scored'].includes(lSubmitted?.status),
+      lSubmitted,
+    );
+    // Result is either visible (immediate policies) or hidden until an admin publishes it.
+    const resultRes = await fetch(`${BASE}/attempts/${lAttempt.id}/result`, {
+      headers: { Authorization: `Bearer ${lt}`, Accept: 'application/json' },
+    });
+    if (resultRes.status === 403) {
+      results.push({ ok: true, method: 'GET', path: `/attempts/${lAttempt.id}/result`, status: 403, expected: [403] });
+      const lResult = await call('GET', `/admin/results?published=false`, { token: at });
+      const row = Array.isArray(lResult) ? lResult.find((r) => r.attemptId === lAttempt.id) : undefined;
+      if (row?.id) {
+        await call('POST', `/admin/results/${row.id}/publish`, { token: at, body: { reason: 'smoke learner publish' } });
+        await call('GET', `/attempts/${lAttempt.id}/result`, { token: lt });
+      }
+    } else {
+      await call('GET', `/attempts/${lAttempt.id}/result`, { token: lt });
+    }
+    const mine = await call('GET', '/me/attempts', { token: lt });
+    check(
+      'me/attempts includes the new attempt',
+      Array.isArray(mine) && mine.some((a) => a.id === lAttempt.id),
+      mine,
+    );
+    await call('GET', `/me/attempts?testId=${freeTest.id}`, { token: lt });
+  }
+
   // —— Projects and semesters ——
   await call('GET', '/admin/projects', { token: at });
   await call('GET', '/admin/semesters', { token: at });
@@ -541,11 +614,34 @@ async function main() {
     body: { key: `smoke-${run}`, title: 'Smoke', body: 'Hello {{name}}', channel: 'push' },
   });
   await call('GET', '/admin/notifications', { token: at });
+  const campaignTitle = `Smoke campaign ${run}`;
   const campaign = await call('POST', '/admin/notifications', {
     token: at,
-    body: { title: 'Smoke campaign', body: 'Hello', audience: 'everyone', templateId: ntpl?.id },
+    body: {
+      title: campaignTitle,
+      body: 'Hello',
+      audience: 'all',
+      category: 'news',
+      templateId: ntpl?.id,
+    },
   });
-  await call('POST', `/admin/notifications/${campaign?.id}/send`, { token: at });
+  const sentCampaign = await call('POST', `/admin/notifications/${campaign?.id}/send`, { token: at });
+  check(
+    'campaign send fans out to inbox',
+    sentCampaign?.status === 'sent' && sentCampaign?.inboxCreated >= 1 && sentCampaign?.recipientCount >= 1,
+    sentCampaign,
+  );
+  const inboxLogin = await call('POST', '/auth/login', { body: LEARNER });
+  const inbox = await call('GET', '/me/notifications', { token: inboxLogin?.accessToken });
+  const inboxItem = Array.isArray(inbox) ? inbox.find((n) => n.title === campaignTitle) : null;
+  check('learner inbox contains campaign', inboxItem && inboxItem.category === 'news' && inboxItem.read === false, inbox);
+  if (inboxItem) {
+    const marked = await call('PATCH', `/me/notifications/${inboxItem.id}`, {
+      token: inboxLogin?.accessToken,
+      body: { read: true },
+    });
+    check('inbox item can be marked read', marked?.read === true, marked);
+  }
 
   await call('GET', '/admin/products', { token: at });
   const product = await call('POST', '/admin/products', {

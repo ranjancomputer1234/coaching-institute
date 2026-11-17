@@ -10,6 +10,7 @@ import {
   CourseCommercialMode,
   EditorialKind,
   EntitlementState,
+  LearnerAccountState,
   LiveClassStatus,
   Prisma,
 } from '@prisma/client';
@@ -510,6 +511,10 @@ export class PlatformService {
         audience: dto.audience ?? 'single',
         audienceRef: dto.audienceRef,
         templateId: dto.templateId,
+        category: dto.category ?? 'system',
+        actionLabel: dto.actionLabel?.trim() || null,
+        targetKind: dto.targetKind?.trim() || null,
+        targetRef: dto.targetRef?.trim() || null,
         status: 'draft',
         providerStatus: 'not_configured',
       },
@@ -520,9 +525,68 @@ export class PlatformService {
       action: 'notification.campaign_create',
       resourceType: 'NotificationCampaign',
       resourceId: row.id,
-      after: { title: row.title, audience: row.audience },
+      after: {
+        title: row.title,
+        audience: row.audience,
+        category: row.category,
+      },
     });
     return row;
+  }
+
+  /** Resolve eligible learner IDs for a campaign audience. */
+  private async resolveCampaignLearnerIds(campaign: {
+    audience: string;
+    audienceRef: string | null;
+  }): Promise<string[]> {
+    const audience = (campaign.audience ?? 'single').toLowerCase();
+    const ref = campaign.audienceRef?.trim() || null;
+    const deliverable = {
+      accountState: {
+        notIn: ['suspended', 'blocked', 'deleted'] as LearnerAccountState[],
+      },
+    };
+
+    if (audience === 'all' || audience === 'everyone') {
+      const rows = await this.prisma.learner.findMany({
+        where: { accountState: LearnerAccountState.active },
+        select: { id: true },
+      });
+      return rows.map((r) => r.id);
+    }
+
+    if (!ref) return [];
+
+    if (audience === 'segment' || audience === 'batch') {
+      const batch = await this.prisma.batch.findUnique({
+        where: { id: ref },
+        select: { id: true },
+      });
+      if (batch) {
+        const rows = await this.prisma.learner.findMany({
+          where: {
+            ...deliverable,
+            OR: [
+              { batchId: batch.id },
+              { memberships: { some: { batchId: batch.id } } },
+            ],
+          },
+          select: { id: true },
+        });
+        return rows.map((r) => r.id);
+      }
+    }
+
+    // single (and segment/batch whose ref is not a batch): treat ref as learner id(s).
+    const ids = (audience === 'learners' ? ref.split(',') : [ref])
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!ids.length) return [];
+    const rows = await this.prisma.learner.findMany({
+      where: { id: { in: ids }, ...deliverable },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
   }
 
   async sendCampaign(id: string, actor: Actor) {
@@ -537,7 +601,7 @@ export class PlatformService {
       });
     }
     const configured = this.providers().push;
-    const row = await this.prisma.notificationCampaign.update({
+    const queued = await this.prisma.notificationCampaign.update({
       where: { id },
       data: configured
         ? {
@@ -548,21 +612,75 @@ export class PlatformService {
         : {
             status: 'not_sent',
             providerStatus: 'not_configured',
-            failureReason:
-              'Push provider is not configured. No message was delivered.',
+            failureReason: null,
           },
     });
+
+    // Inbox is authoritative: always fan out, regardless of push configuration.
+    const learnerIds = [
+      ...new Set(await this.resolveCampaignLearnerIds(queued)),
+    ];
+    const items = learnerIds.map((learnerId) => ({
+      learnerId,
+      campaignId: queued.id,
+      title: queued.title,
+      body: queued.body,
+      category: queued.category,
+      priority: 'normal',
+      actionLabel: queued.actionLabel,
+      targetKind: queued.targetKind,
+      targetRef: queued.targetRef,
+    }));
+
+    const CHUNK = 1000;
+    const { inboxCreated, row } = await this.prisma.$transaction(async (tx) => {
+      let created = 0;
+      for (let i = 0; i < items.length; i += CHUNK) {
+        const res = await tx.notificationInboxItem.createMany({
+          data: items.slice(i, i + CHUNK),
+          skipDuplicates: true,
+        });
+        created += res.count;
+      }
+      const recipientCount = await tx.notificationInboxItem.count({
+        where: { campaignId: queued.id },
+      });
+      const updated = await tx.notificationCampaign.update({
+        where: { id },
+        data: {
+          recipientCount,
+          sentAt: new Date(),
+          ...(recipientCount > 0
+            ? {
+                status: 'sent',
+                failureReason: configured
+                  ? null
+                  : 'Push provider is not configured. Delivered to in-app inbox only.',
+              }
+            : {
+                failureReason: 'No eligible recipients for this audience.',
+              }),
+        },
+      });
+      return { inboxCreated: created, row: updated };
+    });
+
     await this.audit.write({
       actorId: actor.userId,
       actorDisplay: actor.email,
       action: 'notification.send',
       resourceType: 'NotificationCampaign',
       resourceId: id,
-      outcome: configured ? 'queued' : 'capability_unavailable',
-      after: { status: row.status, providerStatus: row.providerStatus },
+      outcome: row.recipientCount > 0 ? 'sent' : 'no_recipients',
+      after: {
+        status: row.status,
+        providerStatus: row.providerStatus,
+        recipientCount: row.recipientCount,
+        inboxCreated,
+      },
       severity: AuditSeverity.notice,
     });
-    return row;
+    return { ...row, recipientCount: row.recipientCount, inboxCreated };
   }
 
   listProducts() {

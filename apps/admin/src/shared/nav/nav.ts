@@ -70,7 +70,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Coupons', to: '/coupons', icon: TicketPercent, permission: 'payments.read' },
       { label: 'Orders', to: '/orders', icon: ShoppingCart, permission: 'payments.read' },
       { label: 'Entitlements', to: '/entitlements', icon: KeyRound, permission: 'enrollments.create' },
-      { label: 'Refunds', to: '/refunds', icon: RotateCcw, permission: 'payments.refund_approve' },
+      { label: 'Refunds', to: '/refunds', icon: RotateCcw, permission: 'payments.read' },
     ],
   },
   {
