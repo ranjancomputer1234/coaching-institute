@@ -979,7 +979,13 @@ async function seedDummyCatalogue() {
   for (const item of courses) {
     const course = await prisma.course.upsert({
       where: { slug: item.slug },
-      update: {},
+      update: {
+        commercialMode: item.commercialMode,
+        pricePaise: item.pricePaise ?? null,
+        featured: item.featured,
+        estimatedMinutes: item.estimatedMinutes,
+        coverImageUrl: item.coverImageUrl,
+      },
       create: {
         slug: item.slug,
         title: item.title,
