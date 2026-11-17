@@ -47,6 +47,8 @@ const courseListSelect = {
   estimatedMinutes: true,
   coverImageUrl: true,
   iconUrl: true,
+  pricePaise: true,
+  sortOrder: true,
 } satisfies Prisma.CourseSelect;
 
 @Injectable()
@@ -56,6 +58,21 @@ export class LearnerCatalogueService {
     private readonly access: ContentAccessService,
     private readonly resources: ResourcesService,
   ) {}
+
+  private presentCourse<
+    T extends {
+      commercialMode: CourseCommercialMode;
+      pricePaise: number | null;
+    },
+  >(course: T) {
+    const { pricePaise, ...rest } = course;
+    const paid = course.commercialMode === CourseCommercialMode.paid;
+    const price =
+      paid && pricePaise != null
+        ? { amountMinor: pricePaise, currency: 'INR' as const }
+        : null;
+    return { ...rest, price };
+  }
 
   private directPlayback(url: string | null | undefined) {
     const value = url?.trim() ?? '';
@@ -192,7 +209,7 @@ export class LearnerCatalogueService {
             featured: true,
             commercialMode: { not: CourseCommercialMode.hidden_internal },
           },
-          orderBy: { publishedAt: 'desc' },
+          orderBy: [{ sortOrder: 'asc' }, { publishedAt: 'desc' }],
           take: 8,
           select: courseListSelect,
         }),
@@ -228,7 +245,9 @@ export class LearnerCatalogueService {
     return {
       banners,
       sections,
-      featuredCourses,
+      featuredCourses: featuredCourses.map((course) =>
+        this.presentCourse(course),
+      ),
       continuing: continuing.map((row) => ({
         lessonId: row.lessonId,
         title: row.lesson.title,
@@ -280,7 +299,7 @@ export class LearnerCatalogueService {
         where,
         ...cursorArgs,
         take,
-        orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+        orderBy: [{ sortOrder: 'asc' }, { id: 'desc' }],
         select: courseListSelect,
       }),
       this.prisma.course.count({ where }),
@@ -289,7 +308,7 @@ export class LearnerCatalogueService {
     const page = toPage(rows, pageSize, total);
     const items = await Promise.all(
       page.items.map(async (course) => ({
-        ...course,
+        ...this.presentCourse(course),
         access: await this.courseAccess(
           course.id,
           course.commercialMode,
@@ -327,7 +346,10 @@ export class LearnerCatalogueService {
           title: true,
           summary: true,
           commercialMode: true,
+          pricePaise: true,
+          sortOrder: true,
         },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       }),
       this.prisma.lesson.findMany({
         where: {
@@ -344,7 +366,10 @@ export class LearnerCatalogueService {
         },
       }),
     ]);
-    return { courses, lessons };
+    return {
+      courses: courses.map((course) => this.presentCourse(course)),
+      lessons,
+    };
   }
 
   async getCourse(id: string, learnerId?: string) {
@@ -375,7 +400,14 @@ export class LearnerCatalogueService {
       learnerId,
     );
     const lessons = await this.presentLessons(course.lessons, access.granted);
-    return { ...course, lessons, access };
+    const { lessons: _lessons, pricePaise, ...courseFields } = course;
+    void _lessons;
+    const paid = course.commercialMode === CourseCommercialMode.paid;
+    const price =
+      paid && pricePaise != null
+        ? { amountMinor: pricePaise, currency: 'INR' as const }
+        : null;
+    return { ...courseFields, price, lessons, access };
   }
 
   async enroll(courseId: string, learnerId: string) {

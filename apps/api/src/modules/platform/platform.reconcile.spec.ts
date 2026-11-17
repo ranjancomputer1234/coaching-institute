@@ -74,17 +74,17 @@ describe('PlatformService.reconcileOrder', () => {
 
     expect(result.accessGranted).toBe(true);
     expect(result.entitlement?.id).toBe('ent-1');
-    expect(entitlementCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          learnerId: 'learner-1',
-          courseId: 'course-1',
-          source: 'purchase',
-          productKey: 'SKU-1',
-          grantReason: 'order:order-1 ref:pay_abc123',
-        }),
-      }),
-    );
+    expect(entitlementCreate).toHaveBeenCalledTimes(1);
+    const createCalls = entitlementCreate.mock.calls as Array<
+      [{ data: Record<string, unknown> }]
+    >;
+    expect(createCalls[0]?.[0].data).toMatchObject({
+      learnerId: 'learner-1',
+      courseId: 'course-1',
+      source: 'purchase',
+      productKey: 'SKU-1',
+      grantReason: 'order:order-1 ref:pay_abc123',
+    });
   });
 
   it('does not create a second entitlement when one already exists for the order', async () => {

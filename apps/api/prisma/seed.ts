@@ -854,6 +854,7 @@ async function seedDummyCatalogue() {
     summary: string;
     description: string;
     commercialMode: 'free' | 'paid';
+    pricePaise?: number;
     featured: boolean;
     estimatedMinutes: number;
     level: string;
@@ -916,6 +917,7 @@ async function seedDummyCatalogue() {
       description:
         'Dummy paid course for local testing. Lesson files are short public sample clips.',
       commercialMode: 'paid',
+      pricePaise: 49900,
       featured: true,
       estimatedMinutes: 22,
       level: 'beginner',
@@ -985,6 +987,7 @@ async function seedDummyCatalogue() {
         summary: item.summary,
         description: item.description,
         commercialMode: item.commercialMode,
+        pricePaise: item.pricePaise ?? null,
         lifecycle: ContentLifecycle.published,
         publishedAt: new Date(),
         featured: item.featured,

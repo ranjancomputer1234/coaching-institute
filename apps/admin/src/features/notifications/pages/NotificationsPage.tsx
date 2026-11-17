@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { apiFetch } from '../../../shared/api/client';
+import { useAuth } from '../../../shared/auth/AuthContext';
 import {
   distinctOptions,
   filterBySearch,
@@ -21,7 +22,9 @@ type Campaign = {
 };
 
 export function NotificationsPage() {
+  const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
+  const canSend = hasPermission('notifications.send_bulk');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -155,13 +158,17 @@ export function NotificationsPage() {
                     </td>
                     <td>{row.providerStatus}</td>
                     <td>
-                      <button
-                        className="btn btn-ghost"
-                        type="button"
-                        onClick={() => send.mutate(row.id)}
-                      >
-                        Send
-                      </button>
+                      {canSend ? (
+                        <button
+                          className="btn btn-ghost"
+                          type="button"
+                          onClick={() => send.mutate(row.id)}
+                        >
+                          Send
+                        </button>
+                      ) : (
+                        <span className="muted small">Needs send_bulk</span>
+                      )}
                     </td>
                   </tr>
                 ))

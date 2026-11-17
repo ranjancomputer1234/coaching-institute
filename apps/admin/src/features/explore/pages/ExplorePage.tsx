@@ -74,7 +74,29 @@ export function ExplorePage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['explore'] }),
   });
 
+  const reorder = useMutation({
+    mutationFn: (orderedIds: string[]) =>
+      apiFetch('/admin/explore-sections/reorder', {
+        method: 'POST',
+        body: JSON.stringify({ orderedIds }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['explore'] }),
+  });
+
   const rows = list.data ?? [];
+  const moveSection = (sectionId: string, direction: -1 | 1) => {
+    const ordered = [...rows].sort(
+      (a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title),
+    );
+    const index = ordered.findIndex((row) => row.id === sectionId);
+    const swapWith = index + direction;
+    if (index < 0 || swapWith < 0 || swapWith >= ordered.length) return;
+    const next = [...ordered];
+    const temp = next[index]!;
+    next[index] = next[swapWith]!;
+    next[swapWith] = temp;
+    reorder.mutate(next.map((row) => row.id));
+  };
   const filtered = useMemo(() => {
     let next = rows;
     next = filterBySearch(next, search, (s) => `${s.title} ${s.slug}`);
@@ -164,7 +186,29 @@ export function ExplorePage() {
               ) : (
                 filtered.map((section) => (
                   <tr key={section.id}>
-                    <td>{section.sortOrder}</td>
+                    <td>
+                      <div className="action-row">
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={reorder.isPending}
+                          onClick={() => moveSection(section.id, -1)}
+                          aria-label="Move up"
+                        >
+                          ↑
+                        </button>
+                        <span>{section.sortOrder}</span>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={reorder.isPending}
+                          onClick={() => moveSection(section.id, 1)}
+                          aria-label="Move down"
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </td>
                     <td>{section.title}</td>
                     <td className="muted">{section.slug}</td>
                     <td>
@@ -186,7 +230,8 @@ export function ExplorePage() {
                       >
                         Rename
                       </button>
-                      {section.lifecycle !== 'published' ? (
+                      {hasPermission('explore.manage') &&
+                      section.lifecycle !== 'published' ? (
                         <button
                           type="button"
                           className="btn"

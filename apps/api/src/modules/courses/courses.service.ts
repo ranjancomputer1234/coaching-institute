@@ -3,7 +3,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ContentLifecycle, AuditSeverity } from '@prisma/client';
+import {
+  AuditSeverity,
+  ContentLifecycle,
+  CourseCommercialMode,
+} from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CloudinaryService } from '../resources/cloudinary.service';
@@ -27,12 +31,42 @@ export class CoursesService {
     return this.cloudinary.createSignedImageUpload();
   }
 
+  private courseInvalid(message: string) {
+    return new BadRequestException({
+      code: 'COURSE_INVALID',
+      message,
+      fieldErrors: {},
+    });
+  }
+
+  private resolvePricePaise(
+    commercialMode: CourseCommercialMode,
+    pricePaise: number | null | undefined,
+    options?: { requireWhenPaid?: boolean },
+  ): number | null {
+    if (commercialMode === CourseCommercialMode.free) {
+      return null;
+    }
+    const paise = pricePaise ?? null;
+    if (commercialMode === CourseCommercialMode.paid) {
+      if (options?.requireWhenPaid && (paise === null || paise < 100)) {
+        throw this.courseInvalid(
+          'Paid courses require pricePaise of at least 100',
+        );
+      }
+      if (paise !== null && paise < 100) {
+        throw this.courseInvalid('pricePaise must be at least 100');
+      }
+    }
+    return paise;
+  }
+
   findAll() {
     return this.prisma.course.findMany({
       include: {
         _count: { select: { lessons: true, enrollments: true } },
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: [{ sortOrder: 'asc' }, { updatedAt: 'desc' }],
     });
   }
 
@@ -59,6 +93,10 @@ export class CoursesService {
   }
 
   async create(dto: CreateCourseDto, actor: Actor) {
+    const commercialMode = dto.commercialMode ?? CourseCommercialMode.free;
+    const pricePaise = this.resolvePricePaise(commercialMode, dto.pricePaise, {
+      requireWhenPaid: commercialMode === CourseCommercialMode.paid,
+    });
     const course = await this.prisma.course.create({
       data: {
         slug: dto.slug,
@@ -67,9 +105,11 @@ export class CoursesService {
         summary: dto.summary,
         description: dto.description,
         deliveryType: dto.deliveryType,
-        commercialMode: dto.commercialMode,
+        commercialMode,
         featured: dto.featured ?? false,
         estimatedMinutes: dto.estimatedMinutes,
+        pricePaise,
+        sortOrder: dto.sortOrder,
         coverImageUrl: dto.coverImageUrl,
         iconUrl: dto.iconUrl,
         lifecycle: ContentLifecycle.draft,
@@ -88,6 +128,12 @@ export class CoursesService {
 
   async update(id: string, dto: UpdateCourseDto, actor: Actor) {
     const before = await this.findOne(id);
+    const commercialMode = dto.commercialMode ?? before.commercialMode;
+    const priceInput =
+      dto.pricePaise !== undefined ? dto.pricePaise : before.pricePaise;
+    const pricePaise = this.resolvePricePaise(commercialMode, priceInput, {
+      requireWhenPaid: commercialMode === CourseCommercialMode.paid,
+    });
     const course = await this.prisma.course.update({
       where: { id },
       data: {
@@ -96,9 +142,11 @@ export class CoursesService {
         summary: dto.summary,
         description: dto.description,
         deliveryType: dto.deliveryType,
-        commercialMode: dto.commercialMode,
+        commercialMode,
         featured: dto.featured,
         estimatedMinutes: dto.estimatedMinutes,
+        pricePaise,
+        sortOrder: dto.sortOrder,
         coverImageUrl: dto.coverImageUrl,
         iconUrl: dto.iconUrl,
         revision: { increment: 1 },
@@ -120,11 +168,15 @@ export class CoursesService {
   async publish(id: string, actor: Actor) {
     const before = await this.findOne(id);
     if (before.lessons.length === 0) {
-      throw new BadRequestException({
-        code: 'COURSE_INVALID',
-        message: 'Cannot publish a course with no lessons',
-        fieldErrors: {},
-      });
+      throw this.courseInvalid('Cannot publish a course with no lessons');
+    }
+    if (
+      before.commercialMode === CourseCommercialMode.paid &&
+      (!before.pricePaise || before.pricePaise < 100)
+    ) {
+      throw this.courseInvalid(
+        'Paid courses require a valid price before publish',
+      );
     }
     const course = await this.prisma.course.update({
       where: { id },
@@ -154,6 +206,26 @@ export class CoursesService {
       severity: AuditSeverity.notice,
     });
     return course;
+  }
+
+  async reorder(orderedIds: string[], actor: Actor) {
+    await this.prisma.$transaction(
+      orderedIds.map((id, index) =>
+        this.prisma.course.update({
+          where: { id },
+          data: { sortOrder: (index + 1) * 10, revision: { increment: 1 } },
+        }),
+      ),
+    );
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'course.reorder',
+      resourceType: 'Course',
+      after: { orderedIds },
+      severity: AuditSeverity.notice,
+    });
+    return this.findAll();
   }
 
   async unpublish(id: string, actor: Actor) {

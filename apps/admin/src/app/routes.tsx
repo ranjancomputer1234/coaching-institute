@@ -193,6 +193,46 @@ export function AppRoutes() {
               }
             />
             <Route
+              path="document-templates"
+              element={
+                <RecordScreen
+                  title="Document templates"
+                  summary="Certificate and admit-card templates used when issuing learner documents."
+                  queryKey="document-templates"
+                  listPath="/admin/document-templates"
+                  createPath="/admin/document-templates"
+                  permission="documents.generate"
+                  fields={[
+                    { name: 'key', label: 'Key', required: true },
+                    { name: 'title', label: 'Title', required: true },
+                    {
+                      name: 'documentType',
+                      label: 'Type (certificate | admit_card)',
+                      required: true,
+                    },
+                    { name: 'locale', label: 'Locale', required: false },
+                  ]}
+                  columns={[
+                    { header: 'Key', value: (row) => String(row.key ?? '') },
+                    { header: 'Title', value: (row) => String(row.title ?? '') },
+                    {
+                      header: 'Type',
+                      value: (row) => String(row.documentType ?? ''),
+                    },
+                    {
+                      header: 'Version',
+                      value: (row) => String(row.version ?? ''),
+                    },
+                    {
+                      header: 'State',
+                      value: (row) => String(row.lifecycle ?? ''),
+                    },
+                  ]}
+                  statusKey="State"
+                />
+              }
+            />
+            <Route
               path="certificates"
               element={<DocumentsPage documentType="certificate" title="Certificates" />}
             />

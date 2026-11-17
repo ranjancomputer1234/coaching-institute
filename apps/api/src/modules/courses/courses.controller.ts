@@ -11,6 +11,7 @@ import { CoursesService } from './courses.service';
 import {
   CreateCourseDto,
   CreateLessonDto,
+  ReorderCoursesDto,
   UpdateCourseDto,
 } from './dto/course.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -37,6 +38,12 @@ export class CoursesController {
   @RequirePermissions('content.edit')
   imageUpload() {
     return this.coursesService.imageUploadSlot();
+  }
+
+  @Post('reorder')
+  @RequirePermissions('content.edit')
+  reorder(@Body() dto: ReorderCoursesDto, @CurrentUser() user: Actor) {
+    return this.coursesService.reorder(dto.orderedIds, user);
   }
 
   @Get(':id')

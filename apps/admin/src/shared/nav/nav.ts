@@ -83,6 +83,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Documents', icon: Award,
     items: [
+      { label: 'Templates', to: '/document-templates', icon: FileText, permission: 'documents.generate' },
       { label: 'Certificates', to: '/certificates', icon: Award, permission: 'documents.issue' },
       { label: 'Admit Cards', to: '/admit-cards', icon: IdCard, permission: 'documents.issue' },
     ],

@@ -183,7 +183,14 @@ async function main() {
   await call('GET', '/admin/courses', { token: at });
   const course = await call('POST', '/admin/courses', {
     token: at,
-    body: { slug: `smoke-${run}`, title: `Smoke Course ${run}`, commercialMode: 'paid', featured: false, estimatedMinutes: 60 },
+    body: {
+      slug: `smoke-${run}`,
+      title: `Smoke Course ${run}`,
+      commercialMode: 'paid',
+      pricePaise: 49900,
+      featured: false,
+      estimatedMinutes: 60,
+    },
   });
   await call('GET', `/admin/courses/${course?.id}`, { token: at });
   await call('PATCH', `/admin/courses/${course?.id}`, { token: at, body: { summary: 'Smoke summary' } });
@@ -199,6 +206,12 @@ async function main() {
   // Lesson publish alone does not expose the course — course must be published too.
   await call('GET', `/courses/${course?.id}/lessons`, { expect: 404 });
   await call('POST', `/admin/courses/${course?.id}/publish`, { token: at });
+  const publishedCourse = await call('GET', `/courses/${course?.id}`);
+  check(
+    'published paid course exposes price',
+    publishedCourse?.price?.amountMinor === 49900,
+    publishedCourse?.price,
+  );
   const publicLessons = await call('GET', `/courses/${course?.id}/lessons`);
   check(
     'published course lessons visible without staff token',
@@ -549,6 +562,7 @@ async function main() {
       slug: `smoke-unlock-${run}`,
       title: `Smoke Unlock ${run}`,
       commercialMode: 'paid',
+      pricePaise: 19900,
       featured: false,
       estimatedMinutes: 30,
     },

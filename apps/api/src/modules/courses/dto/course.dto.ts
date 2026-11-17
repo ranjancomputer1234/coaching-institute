@@ -1,4 +1,5 @@
 import {
+  ArrayMinSize,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -54,6 +55,16 @@ export class CreateCourseDto {
   @IsOptional()
   @IsString()
   iconUrl?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(100)
+  pricePaise?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
 }
 
 export class UpdateCourseDto {
@@ -97,6 +108,22 @@ export class UpdateCourseDto {
   @IsOptional()
   @IsString()
   iconUrl?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(100)
+  pricePaise?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+}
+
+export class ReorderCoursesDto {
+  @IsString({ each: true })
+  @ArrayMinSize(1)
+  orderedIds!: string[];
 }
 
 export class CreateLessonDto {

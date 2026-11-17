@@ -20,10 +20,18 @@ type Course = {
   summary: string | null;
   commercialMode: string;
   lifecycle: string;
+  pricePaise: number | null;
+  sortOrder: number;
   coverImageUrl: string | null;
   iconUrl: string | null;
   _count?: { lessons: number; enrollments: number };
 };
+
+function formatAccess(course: Pick<Course, 'commercialMode' | 'pricePaise'>) {
+  if (course.commercialMode !== 'paid') return 'FREE';
+  if (!course.pricePaise || course.pricePaise < 100) return 'Paid (set ₹)';
+  return `₹${(course.pricePaise / 100).toLocaleString('en-IN')}`;
+}
 
 type Lesson = {
   id: string;
@@ -63,6 +71,7 @@ export function CoursesPage() {
   const [shortTitle, setShortTitle] = useState('');
   const [summary, setSummary] = useState('');
   const [commercialMode, setCommercialMode] = useState('free');
+  const [priceRupees, setPriceRupees] = useState('');
   const [iconUrl, setIconUrl] = useState('');
   const [coverImageUrl, setCoverImageUrl] = useState('');
   const [editing, setEditing] = useState<Course | null>(null);
@@ -90,22 +99,33 @@ export function CoursesPage() {
   });
 
   const create = useMutation({
-    mutationFn: () =>
-      apiFetch('/admin/courses', {
+    mutationFn: () => {
+      const body: Record<string, unknown> = {
+        title,
+        slug,
+        commercialMode,
+        shortTitle: shortTitle.trim() || undefined,
+        summary: summary.trim() || undefined,
+        iconUrl: iconUrl.trim() || undefined,
+        coverImageUrl: coverImageUrl.trim() || undefined,
+      };
+      if (commercialMode === 'paid') {
+        const rupees = Number(priceRupees);
+        if (!Number.isInteger(rupees) || rupees < 1) {
+          throw new Error('Paid courses need a whole-rupee price of at least ₹1');
+        }
+        body.pricePaise = rupees * 100;
+      }
+      return apiFetch('/admin/courses', {
         method: 'POST',
-        body: JSON.stringify({
-          title,
-          slug,
-          commercialMode,
-          shortTitle: shortTitle.trim() || undefined,
-          summary: summary.trim() || undefined,
-          iconUrl: iconUrl.trim() || undefined,
-          coverImageUrl: coverImageUrl.trim() || undefined,
-        }),
-      }),
+        body: JSON.stringify(body),
+      });
+    },
     onSuccess: () => {
       setTitle('');
       setSlug('');
+      setPriceRupees('');
+      setCommercialMode('free');
       setDrawerOpen(false);
       queryClient.invalidateQueries({ queryKey: ['courses'] });
     },
@@ -114,15 +134,25 @@ export function CoursesPage() {
   const saveCover = useMutation({
     mutationFn: () => {
       if (!editing) throw new Error('Choose a course');
+      const body: Record<string, unknown> = {
+        shortTitle: shortTitle.trim() || undefined,
+        summary: summary.trim() || undefined,
+        commercialMode,
+        iconUrl: iconUrl.trim() || undefined,
+        coverImageUrl: coverImageUrl.trim() || undefined,
+      };
+      if (commercialMode === 'paid') {
+        const rupees = Number(priceRupees);
+        if (!Number.isInteger(rupees) || rupees < 1) {
+          throw new Error('Paid courses need a whole-rupee price of at least ₹1');
+        }
+        body.pricePaise = rupees * 100;
+      } else {
+        body.pricePaise = null;
+      }
       return apiFetch(`/admin/courses/${editing.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          shortTitle: shortTitle.trim() || undefined,
-          summary: summary.trim() || undefined,
-          commercialMode,
-          iconUrl: iconUrl.trim() || undefined,
-          coverImageUrl: coverImageUrl.trim() || undefined,
-        }),
+        body: JSON.stringify(body),
       });
     },
     onSuccess: () => {
@@ -133,6 +163,15 @@ export function CoursesPage() {
     onError: (error) => {
       setFormError(error instanceof Error ? error.message : 'Could not save the cover');
     },
+  });
+
+  const reorder = useMutation({
+    mutationFn: (orderedIds: string[]) =>
+      apiFetch('/admin/courses/reorder', {
+        method: 'POST',
+        body: JSON.stringify({ orderedIds }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['courses'] }),
   });
 
   const onCoverFile = async (file: File | undefined) => {
@@ -205,6 +244,19 @@ export function CoursesPage() {
   });
 
   const rows = list.data ?? [];
+  const moveCourse = (courseId: string, direction: -1 | 1) => {
+    const ordered = [...rows].sort(
+      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.title.localeCompare(b.title),
+    );
+    const index = ordered.findIndex((row) => row.id === courseId);
+    const swapWith = index + direction;
+    if (index < 0 || swapWith < 0 || swapWith >= ordered.length) return;
+    const next = [...ordered];
+    const temp = next[index]!;
+    next[index] = next[swapWith]!;
+    next[swapWith] = temp;
+    reorder.mutate(next.map((row) => row.id));
+  };
   const filtered = useMemo(() => {
     let next = rows;
     next = filterBySearch(next, search, (c) => `${c.title} ${c.slug}`);
@@ -277,10 +329,11 @@ export function CoursesPage() {
           <table>
             <thead>
               <tr>
+                <th>Order</th>
                 <th>Cover</th>
                 <th>Title</th>
                 <th>Slug</th>
-                <th>Mode</th>
+                <th>Access</th>
                 <th>Lifecycle</th>
                 <th>Lessons</th>
                 <th>Actions</th>
@@ -289,13 +342,35 @@ export function CoursesPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="muted">
+                  <td colSpan={8} className="muted">
                     No rows match filters.
                   </td>
                 </tr>
               ) : (
                 filtered.map((course) => (
                   <tr key={course.id}>
+                    <td>
+                      <div className="action-row">
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={reorder.isPending}
+                          onClick={() => moveCourse(course.id, -1)}
+                          aria-label="Move up"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={reorder.isPending}
+                          onClick={() => moveCourse(course.id, 1)}
+                          aria-label="Move down"
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </td>
                     <td>
                       {course.coverImageUrl ? (
                         <img className="banner-thumb" src={course.coverImageUrl} alt="" />
@@ -305,7 +380,7 @@ export function CoursesPage() {
                     </td>
                     <td>{course.title}</td>
                     <td className="muted">{course.slug}</td>
-                    <td>{course.commercialMode}</td>
+                    <td>{formatAccess(course)}</td>
                     <td>
                       <StatusPill value={course.lifecycle} />
                     </td>
@@ -320,12 +395,17 @@ export function CoursesPage() {
                             setShortTitle(course.shortTitle ?? '');
                             setSummary(course.summary ?? '');
                             setCommercialMode(course.commercialMode || 'free');
+                            setPriceRupees(
+                              course.pricePaise
+                                ? String(Math.round(course.pricePaise / 100))
+                                : '',
+                            );
                             setIconUrl(course.iconUrl ?? '');
                             setCoverImageUrl(course.coverImageUrl ?? '');
                             setFormError(null);
                           }}
                         >
-                          Cover
+                          Edit
                         </button>
                       ) : null}
                       {hasPermission('content.edit') ? (
@@ -416,16 +496,39 @@ export function CoursesPage() {
             <input id="course-summary" value={summary} onChange={(e) => setSummary(e.target.value)} />
           </div>
           <div className="field">
-            <label htmlFor="course-pricing">Pricing</label>
+            <label htmlFor="course-pricing">Access</label>
             <select
               id="course-pricing"
               value={commercialMode}
-              onChange={(e) => setCommercialMode(e.target.value)}
+              onChange={(e) => {
+                setCommercialMode(e.target.value);
+                if (e.target.value !== 'paid') setPriceRupees('');
+              }}
             >
               <option value="free">Free</option>
               <option value="paid">Paid</option>
             </select>
           </div>
+          {commercialMode === 'paid' ? (
+            <div className="field">
+              <label htmlFor="course-price">Price (₹)</label>
+              <input
+                id="course-price"
+                type="number"
+                min={1}
+                step={1}
+                value={priceRupees}
+                onChange={(e) => setPriceRupees(e.target.value)}
+                required
+              />
+              <p className="field-hint">
+                Whole rupees only. Preview:{' '}
+                {Number(priceRupees) >= 1
+                  ? `₹${Number(priceRupees).toLocaleString('en-IN')}`
+                  : '—'}
+              </p>
+            </div>
+          ) : null}
           <div className="field">
             <label htmlFor="course-cover">Subject cover image</label>
             <input
@@ -485,7 +588,7 @@ export function CoursesPage() {
           if (saveCover.isPending) return;
           setEditing(null);
         }}
-        title={editing ? `Cover — ${editing.title}` : 'Subject cover'}
+        title={editing ? `Edit — ${editing.title}` : 'Edit course'}
       >
         <form
           className="stack-form"
@@ -496,8 +599,43 @@ export function CoursesPage() {
           }}
         >
           <p className="field-hint">
-            The phone shows this picture at the top of {editing?.title}. Pick an image that matches this subject.
+            The phone shows this picture at the top of {editing?.title}. Set Free / Paid and a rupee
+            price for paid courses.
           </p>
+          <div className="field">
+            <label htmlFor="edit-access">Access</label>
+            <select
+              id="edit-access"
+              value={commercialMode}
+              onChange={(event) => {
+                setCommercialMode(event.target.value);
+                if (event.target.value !== 'paid') setPriceRupees('');
+              }}
+            >
+              <option value="free">Free</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
+          {commercialMode === 'paid' ? (
+            <div className="field">
+              <label htmlFor="edit-price">Price (₹)</label>
+              <input
+                id="edit-price"
+                type="number"
+                min={1}
+                step={1}
+                value={priceRupees}
+                onChange={(event) => setPriceRupees(event.target.value)}
+                required
+              />
+              <p className="field-hint">
+                Preview:{' '}
+                {Number(priceRupees) >= 1
+                  ? `₹${Number(priceRupees).toLocaleString('en-IN')}`
+                  : '—'}
+              </p>
+            </div>
+          ) : null}
           <div className="field">
             <label htmlFor="edit-cover-file">Cover image</label>
             <input
@@ -522,7 +660,7 @@ export function CoursesPage() {
           </div>
           {formError ? <p className="error">{formError}</p> : null}
           <button className="btn" type="submit" disabled={saveCover.isPending || uploading}>
-            {uploading ? 'Uploading image…' : 'Save cover'}
+            {uploading ? 'Uploading image…' : 'Save'}
           </button>
         </form>
       </ContentDrawer>

@@ -211,6 +211,8 @@ model Course {
   lifecycle      ContentLifecycle     @default(draft)
   featured       Boolean              @default(false)
   estimatedMinutes Int?
+  pricePaise     Int?
+  sortOrder      Int                  @default(0)
   coverImageUrl  String?
   iconUrl        String?
   revision       Int                  @default(1)
