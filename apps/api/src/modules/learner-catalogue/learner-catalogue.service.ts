@@ -18,11 +18,9 @@ import { resolveCommercialAccess } from '../../common/utils/content-access';
 
 const published = { lifecycle: ContentLifecycle.published };
 
-/** Draft lessons on a live course were invisible in the app, including previews. */
+/** Learner API only returns published lessons — drafts stay staff-only until publish. */
 const visibleLesson = {
-  lifecycle: {
-    notIn: [ContentLifecycle.unpublished, ContentLifecycle.archived],
-  },
+  lifecycle: ContentLifecycle.published,
 };
 
 const lessonFields = {

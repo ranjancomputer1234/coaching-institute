@@ -213,4 +213,45 @@ export class CoursesService {
     });
     return lesson;
   }
+
+  async publishLesson(courseId: string, lessonId: string, actor: Actor) {
+    const lesson = await this.prisma.lesson.findFirst({
+      where: { id: lessonId, courseId },
+    });
+    if (!lesson) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: `Lesson ${lessonId} not found on course ${courseId}`,
+        fieldErrors: {},
+      });
+    }
+    if (
+      lesson.lifecycle === ContentLifecycle.archived ||
+      lesson.lifecycle === ContentLifecycle.unpublished
+    ) {
+      throw new BadRequestException({
+        code: 'LESSON_INVALID',
+        message: `Cannot publish a lesson in ${lesson.lifecycle} state`,
+        fieldErrors: {},
+      });
+    }
+    if (lesson.lifecycle === ContentLifecycle.published) {
+      return lesson;
+    }
+    const updated = await this.prisma.lesson.update({
+      where: { id: lessonId },
+      data: { lifecycle: ContentLifecycle.published },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'lesson.publish',
+      resourceType: 'Lesson',
+      resourceId: lessonId,
+      before: { lifecycle: lesson.lifecycle },
+      after: { lifecycle: updated.lifecycle },
+      severity: AuditSeverity.notice,
+    });
+    return updated;
+  }
 }

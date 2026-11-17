@@ -3,7 +3,7 @@ import {
   FolderKanban, HelpCircle, FileText, ClipboardList, BarChart3, Radio, Compass,
   Image, Newspaper, Lightbulb, Sparkles, Mic, ShoppingBag, TicketPercent, ShoppingCart,
   RotateCcw, Bell, Mail, Award, IdCard, LifeBuoy, PieChart, Scale, ScrollText, Settings,
-  GraduationCap, type LucideIcon,
+  GraduationCap, KeyRound, type LucideIcon,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -69,6 +69,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Products', to: '/products', icon: ShoppingBag, permission: 'payments.read' },
       { label: 'Coupons', to: '/coupons', icon: TicketPercent, permission: 'payments.read' },
       { label: 'Orders', to: '/orders', icon: ShoppingCart, permission: 'payments.read' },
+      { label: 'Entitlements', to: '/entitlements', icon: KeyRound, permission: 'enrollments.create' },
       { label: 'Refunds', to: '/refunds', icon: RotateCcw, permission: 'payments.refund_approve' },
     ],
   },

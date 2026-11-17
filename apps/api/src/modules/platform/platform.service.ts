@@ -9,6 +9,7 @@ import {
   ContentLifecycle,
   CourseCommercialMode,
   EditorialKind,
+  EntitlementState,
   LiveClassStatus,
   Prisma,
 } from '@prisma/client';
@@ -665,7 +666,10 @@ export class PlatformService {
   }
 
   async reconcileOrder(id: string, dto: ReconcileOrderDto, actor: Actor) {
-    const existing = await this.prisma.order.findUnique({ where: { id } });
+    const existing = await this.prisma.order.findUnique({
+      where: { id },
+      include: { product: true },
+    });
     if (!existing) {
       throw new NotFoundException({
         code: 'NOT_FOUND',
@@ -673,14 +677,65 @@ export class PlatformService {
         fieldErrors: {},
       });
     }
-    const row = await this.prisma.order.update({
-      where: { id },
-      data: {
-        status: 'paid_manual',
-        externalReference: dto.externalReference,
-        providerStatus: 'manual_reference',
-      },
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.order.update({
+        where: { id },
+        data: {
+          status: 'paid_manual',
+          externalReference: dto.externalReference,
+          providerStatus: 'manual_reference',
+        },
+        include: { product: true },
+      });
+
+      let entitlement: {
+        id: string;
+        courseId: string | null;
+        state: EntitlementState;
+        source: string;
+      } | null = null;
+
+      const courseId = existing.product.courseId;
+      if (courseId) {
+        const orderMarker = `order:${id}`;
+        const already = await tx.entitlement.findFirst({
+          where: {
+            learnerId: existing.learnerId,
+            courseId,
+            state: EntitlementState.active,
+            OR: [
+              { grantReason: { contains: orderMarker } },
+              {
+                source: 'purchase',
+                productKey: existing.product.sku,
+              },
+            ],
+          },
+        });
+        if (already) {
+          entitlement = already;
+        } else {
+          entitlement = await tx.entitlement.create({
+            data: {
+              learnerId: existing.learnerId,
+              courseId,
+              scopeKind: 'course',
+              scopeRef: courseId,
+              source: 'purchase',
+              state: EntitlementState.active,
+              productKey: existing.product.sku,
+              grantReason: `${orderMarker} ref:${dto.externalReference}`,
+              canDownload: true,
+              canPreview: true,
+            },
+          });
+        }
+      }
+
+      return { order: row, entitlement, accessGranted: Boolean(entitlement) };
     });
+
     await this.audit.write({
       actorId: actor.userId,
       actorDisplay: actor.email,
@@ -688,10 +743,15 @@ export class PlatformService {
       resourceType: 'Order',
       resourceId: id,
       reason: dto.externalReference,
-      after: { status: row.status },
+      after: {
+        status: result.order.status,
+        accessGranted: result.accessGranted,
+        entitlementId: result.entitlement?.id ?? null,
+        courseId: result.entitlement?.courseId ?? existing.product.courseId,
+      },
       severity: AuditSeverity.high,
     });
-    return row;
+    return result;
   }
 
   listRefunds() {

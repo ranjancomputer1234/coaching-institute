@@ -191,8 +191,22 @@ async function main() {
     token: at,
     body: { title: 'Smoke lesson', durationMinutes: 5, contentType: 'video', isPreview: false },
   });
+  check('new lesson starts as draft on unpublished course', newLesson?.lifecycle === 'draft', newLesson);
+  // Draft lessons must not appear on the public catalogue until publish.
+  const draftPublic = await call('GET', `/courses/${course?.id}/lessons`, { expect: 404 });
+  void draftPublic;
+  await call('POST', `/admin/courses/${course?.id}/lessons/${newLesson?.id}/publish`, { token: at });
+  // Lesson publish alone does not expose the course — course must be published too.
+  await call('GET', `/courses/${course?.id}/lessons`, { expect: 404 });
   await call('POST', `/admin/courses/${course?.id}/publish`, { token: at });
+  const publicLessons = await call('GET', `/courses/${course?.id}/lessons`);
+  check(
+    'published course lessons visible without staff token',
+    Array.isArray(publicLessons) && publicLessons.some((l) => l.id === newLesson?.id),
+    publicLessons,
+  );
   await call('POST', `/admin/courses/${course?.id}/unpublish`, { token: at });
+  await call('GET', `/courses/${course?.id}/lessons`, { expect: 404 });
   await call('POST', `/admin/courses/${course?.id}/publish`, { token: at });
   await call('POST', '/admin/courses', { token: at, body: { slug: `smoke-${run}`, title: 'Duplicate' }, expect: 409 });
 
@@ -528,8 +542,64 @@ async function main() {
   await call('GET', '/admin/coupons', { token: at });
   await call('POST', '/admin/coupons', { token: at, body: { code: `SMOKE${run}`.toUpperCase(), percentOff: 10 } });
   await call('GET', '/admin/orders', { token: at });
-  const order = await call('POST', '/admin/orders', { token: at, body: { learnerId: riya?.id, productId: product?.id } });
-  await call('POST', `/admin/orders/${order?.id}/reconcile`, { token: at, body: { externalReference: `pay_${run}` } });
+  // Fresh paid course so reconcile → entitlement is the unlock path (not a prior grant).
+  const paidUnlock = await call('POST', '/admin/courses', {
+    token: at,
+    body: {
+      slug: `smoke-unlock-${run}`,
+      title: `Smoke Unlock ${run}`,
+      commercialMode: 'paid',
+      featured: false,
+      estimatedMinutes: 30,
+    },
+  });
+  await call('POST', `/admin/courses/${paidUnlock?.id}/lessons`, {
+    token: at,
+    body: { title: 'Unlock lesson', durationMinutes: 3, contentType: 'video', isPreview: false },
+  });
+  await call('POST', `/admin/courses/${paidUnlock?.id}/publish`, { token: at });
+  const unlockProduct = await call('POST', '/admin/products', {
+    token: at,
+    body: {
+      sku: `UNLOCK-${run}`,
+      title: 'Unlock product',
+      pricePaise: 19900,
+      courseId: paidUnlock?.id,
+    },
+  });
+  const order = await call('POST', '/admin/orders', {
+    token: at,
+    body: { learnerId: riya?.id, productId: product?.id },
+  });
+  const unlockOrder = await call('POST', '/admin/orders', {
+    token: at,
+    body: { learnerId: riya?.id, productId: unlockProduct?.id },
+  });
+  const reconciled = await call('POST', `/admin/orders/${unlockOrder?.id}/reconcile`, {
+    token: at,
+    body: { externalReference: `pay_unlock_${run}` },
+  });
+  check(
+    'reconcile grants entitlement when product has courseId',
+    reconciled?.accessGranted === true && Boolean(reconciled?.entitlement?.id),
+    reconciled,
+  );
+  const riyaLogin = await call('POST', '/auth/login', {
+    body: { email: 'riya@learner.local', password: LEARNER.password },
+  });
+  const riyaUnlockAccess = await call('GET', `/courses/${paidUnlock?.id}/access`, {
+    token: riyaLogin?.accessToken,
+  });
+  check(
+    'paid reconcile unlocks learner course access',
+    riyaUnlockAccess?.access?.granted === true,
+    riyaUnlockAccess?.access,
+  );
+  // Keep original smoke product/order path for refunds.
+  await call('POST', `/admin/orders/${order?.id}/reconcile`, {
+    token: at,
+    body: { externalReference: `pay_${run}` },
+  });
   await call('GET', '/admin/refunds', { token: at });
   const refund = await call('POST', '/admin/refunds', {
     token: at,

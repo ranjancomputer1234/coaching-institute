@@ -26,6 +26,7 @@ import { NotificationsPage } from '../features/notifications/pages/Notifications
 import { DocumentsPage } from '../features/documents/pages/DocumentsPage';
 import { OrdersPage } from '../features/commerce/pages/OrdersPage';
 import { RefundsPage } from '../features/commerce/pages/RefundsPage';
+import { EntitlementsPage } from '../features/entitlements/pages/EntitlementsPage';
 import { SupportPage } from '../features/support/pages/SupportPage';
 import { ReportsPage } from '../features/reports/pages/ReportsPage';
 import { SettingsPage } from '../features/settings/pages/SettingsPage';
@@ -111,6 +112,11 @@ export function AppRoutes() {
                     { name: 'sku', label: 'SKU', required: true },
                     { name: 'title', label: 'Title', required: true },
                     { name: 'pricePaise', label: 'Price (paise)', type: 'number', required: true },
+                    {
+                      name: 'courseId',
+                      label: 'Course ID (unlock target)',
+                      required: false,
+                    },
                   ]}
                   columns={[
                     { header: 'SKU', value: (row) => String(row.sku ?? '') },
@@ -119,6 +125,10 @@ export function AppRoutes() {
                       header: 'Price',
                       value: (row) =>
                         `₹${(Number(row.pricePaise ?? 0) / 100).toFixed(2)}`,
+                    },
+                    {
+                      header: 'Course',
+                      value: (row) => String(row.courseId ?? '—'),
                     },
                     { header: 'State', value: (row) => String(row.lifecycle ?? '') },
                   ]}
@@ -156,6 +166,7 @@ export function AppRoutes() {
               }
             />
             <Route path="orders" element={<OrdersPage />} />
+            <Route path="entitlements" element={<EntitlementsPage />} />
             <Route path="refunds" element={<RefundsPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
             <Route

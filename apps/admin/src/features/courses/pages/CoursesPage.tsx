@@ -25,6 +25,19 @@ type Course = {
   _count?: { lessons: number; enrollments: number };
 };
 
+type Lesson = {
+  id: string;
+  title: string;
+  lifecycle: string;
+  sortOrder: number;
+  isPreview: boolean;
+  durationMinutes: number | null;
+};
+
+type CourseDetail = Course & {
+  lessons: Lesson[];
+};
+
 async function uploadCourseImage(file: File): Promise<string> {
   const slot = await apiFetch<{ uploadUrl: string; formFields: Record<string, string> }>(
     '/admin/courses/image-uploads',
@@ -60,6 +73,7 @@ export function CoursesPage() {
   const [lessonCourse, setLessonCourse] = useState<Course | null>(null);
   const [lessonTitle, setLessonTitle] = useState('');
   const [lessonDescription, setLessonDescription] = useState('');
+  const [manageCourse, setManageCourse] = useState<Course | null>(null);
   const [search, setSearch] = useState('');
   const [lifecycle, setLifecycle] = useState('');
   const [mode, setMode] = useState('');
@@ -67,6 +81,12 @@ export function CoursesPage() {
   const list = useQuery({
     queryKey: ['courses'],
     queryFn: () => apiFetch<Course[]>('/admin/courses'),
+  });
+
+  const courseDetail = useQuery({
+    queryKey: ['course', manageCourse?.id],
+    enabled: Boolean(manageCourse?.id),
+    queryFn: () => apiFetch<CourseDetail>(`/admin/courses/${manageCourse!.id}`),
   });
 
   const create = useMutation({
@@ -135,7 +155,30 @@ export function CoursesPage() {
   const publish = useMutation({
     mutationFn: (id: string) =>
       apiFetch(`/admin/courses/${id}/publish`, { method: 'POST' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['courses'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['courses'] });
+      queryClient.invalidateQueries({ queryKey: ['course'] });
+    },
+  });
+
+  const unpublish = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/courses/${id}/unpublish`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['courses'] });
+      queryClient.invalidateQueries({ queryKey: ['course'] });
+    },
+  });
+
+  const publishLesson = useMutation({
+    mutationFn: ({ courseId, lessonId }: { courseId: string; lessonId: string }) =>
+      apiFetch(`/admin/courses/${courseId}/lessons/${lessonId}/publish`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['courses'] });
+      queryClient.invalidateQueries({ queryKey: ['course'] });
+    },
   });
 
   const addLesson = useMutation({
@@ -157,6 +200,7 @@ export function CoursesPage() {
       setLessonDescription('');
       setLessonCourse(null);
       queryClient.invalidateQueries({ queryKey: ['courses'] });
+      queryClient.invalidateQueries({ queryKey: ['course'] });
     },
   });
 
@@ -298,6 +342,15 @@ export function CoursesPage() {
                           Add lesson
                         </button>
                       ) : null}
+                      {hasPermission('content.edit') ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => setManageCourse(course)}
+                        >
+                          Lessons
+                        </button>
+                      ) : null}
                       {hasPermission('content.publish') &&
                       course.lifecycle !== 'published' ? (
                         <button
@@ -306,6 +359,16 @@ export function CoursesPage() {
                           onClick={() => publish.mutate(course.id)}
                         >
                           Publish
+                        </button>
+                      ) : null}
+                      {hasPermission('content.publish') &&
+                      course.lifecycle === 'published' ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => unpublish.mutate(course.id)}
+                        >
+                          Unpublish
                         </button>
                       ) : null}
                     </td>
@@ -482,7 +545,7 @@ export function CoursesPage() {
         >
           <p className="muted small">
             This lesson is added to {lessonCourse?.title}. Attach the video or file from Lessons
-            & resources after it is saved.
+            & resources after it is saved. Publishing the course also publishes draft lessons.
           </p>
           <div className="field">
             <label htmlFor="lesson-title">Title</label>
@@ -529,6 +592,76 @@ export function CoursesPage() {
             <p className="error">{addLesson.error.message}</p>
           ) : null}
         </form>
+      </ContentDrawer>
+
+      <ContentDrawer
+        open={manageCourse !== null}
+        onClose={() => setManageCourse(null)}
+        title={manageCourse ? `Lessons — ${manageCourse.title}` : 'Lessons'}
+        size="full"
+      >
+        <p className="muted small">
+          Learners only see published lessons. Publish each draft here, or publish the
+          whole course to publish all draft lessons at once.
+        </p>
+        {courseDetail.isLoading ? <p className="muted">Loading lessons…</p> : null}
+        {courseDetail.error instanceof Error ? (
+          <p className="error">{courseDetail.error.message}</p>
+        ) : null}
+        {publishLesson.error instanceof Error ? (
+          <p className="error">{publishLesson.error.message}</p>
+        ) : null}
+        <div className="panel">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Title</th>
+                <th>Lifecycle</th>
+                <th>Preview</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(courseDetail.data?.lessons ?? []).length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="muted">
+                    No lessons yet. Use Add lesson first.
+                  </td>
+                </tr>
+              ) : (
+                (courseDetail.data?.lessons ?? []).map((lesson) => (
+                  <tr key={lesson.id}>
+                    <td>{lesson.sortOrder}</td>
+                    <td>{lesson.title}</td>
+                    <td>
+                      <StatusPill value={lesson.lifecycle} />
+                    </td>
+                    <td>{lesson.isPreview ? 'Yes' : 'No'}</td>
+                    <td>
+                      {hasPermission('content.publish') &&
+                      lesson.lifecycle === 'draft' ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={publishLesson.isPending}
+                          onClick={() =>
+                            publishLesson.mutate({
+                              courseId: manageCourse!.id,
+                              lessonId: lesson.id,
+                            })
+                          }
+                        >
+                          Publish
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </ContentDrawer>
     </section>
   );

@@ -82,4 +82,14 @@ export class CoursesController {
   ) {
     return this.coursesService.addLesson(id, dto, user);
   }
+
+  @Post(':id/lessons/:lessonId/publish')
+  @RequirePermissions('content.publish')
+  publishLesson(
+    @Param('id') id: string,
+    @Param('lessonId') lessonId: string,
+    @CurrentUser() user: Actor,
+  ) {
+    return this.coursesService.publishLesson(id, lessonId, user);
+  }
 }

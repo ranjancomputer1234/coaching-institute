@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { apiFetch } from '../../../shared/api/client';
+import { useAuth } from '../../../shared/auth/AuthContext';
 import {
   distinctOptions,
   filterBySearch,
@@ -19,10 +20,17 @@ type Order = {
   providerStatus: string;
   externalReference: string | null;
   createdAt?: string;
-  product?: { title: string; sku: string };
+  product?: { title: string; sku: string; courseId?: string | null };
+};
+
+type ReconcileResult = {
+  order: Order;
+  entitlement: { id: string; courseId: string | null } | null;
+  accessGranted: boolean;
 };
 
 export function OrdersPage() {
+  const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [learnerId, setLearnerId] = useState('');
@@ -31,6 +39,9 @@ export function OrdersPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [provider, setProvider] = useState('');
+  const [lastReconcile, setLastReconcile] = useState<ReconcileResult | null>(null);
+
+  const canReconcile = hasPermission('payments.refund_approve');
 
   const list = useQuery({
     queryKey: ['orders'],
@@ -53,11 +64,15 @@ export function OrdersPage() {
 
   const reconcile = useMutation({
     mutationFn: (id: string) =>
-      apiFetch(`/admin/orders/${id}/reconcile`, {
+      apiFetch<ReconcileResult>(`/admin/orders/${id}/reconcile`, {
         method: 'POST',
         body: JSON.stringify({ externalReference: reference }),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['orders'] }),
+    onSuccess: (result) => {
+      setLastReconcile(result);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['entitlements'] });
+    },
   });
 
   const rows = list.data ?? [];
@@ -87,7 +102,10 @@ export function OrdersPage() {
       <div className="page-header">
         <div>
           <h1>Orders & payments</h1>
-          <p>Orders stay pending until you record a real gateway reference. No payment is invented.</p>
+          <p>
+            Orders stay pending until you record a real gateway reference. Paid
+            reconcile grants course access when the product has a course ID.
+          </p>
         </div>
         <PageHeaderActions>
           <button type="button" className="btn" onClick={() => setDrawerOpen(true)}>
@@ -95,6 +113,20 @@ export function OrdersPage() {
           </button>
         </PageHeaderActions>
       </div>
+
+      {lastReconcile ? (
+        <div className="panel" style={{ marginBottom: '1rem' }}>
+          <p>
+            Last reconcile:{' '}
+            <StatusPill value={lastReconcile.order.status} />
+            {' · '}
+            {lastReconcile.accessGranted
+              ? `Access granted${lastReconcile.entitlement?.courseId ? ` for course ${lastReconcile.entitlement.courseId}` : ''}`
+              : 'No course linked on product — grant from Entitlements if needed'}
+          </p>
+        </div>
+      ) : null}
+
       <PageState
         loading={list.isLoading}
         error={list.error instanceof Error ? list.error : null}
@@ -134,6 +166,7 @@ export function OrdersPage() {
             <thead>
               <tr>
                 <th>Product</th>
+                <th>Course</th>
                 <th>Amount</th>
                 <th>Status</th>
                 <th>Provider</th>
@@ -143,7 +176,7 @@ export function OrdersPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="muted">
+                  <td colSpan={6} className="muted">
                     No rows match filters.
                   </td>
                 </tr>
@@ -151,20 +184,23 @@ export function OrdersPage() {
                 filtered.map((row) => (
                   <tr key={row.id}>
                     <td>{row.product?.title ?? '—'}</td>
+                    <td className="muted">{row.product?.courseId ?? '—'}</td>
                     <td>₹{(row.amountPaise / 100).toFixed(2)}</td>
                     <td>
                       <StatusPill value={row.status} />
                     </td>
                     <td>{row.providerStatus}</td>
                     <td>
-                      <button
-                        className="btn btn-ghost"
-                        type="button"
-                        disabled={reference.trim().length < 4}
-                        onClick={() => reconcile.mutate(row.id)}
-                      >
-                        Reconcile
-                      </button>
+                      {canReconcile && row.status !== 'paid_manual' ? (
+                        <button
+                          className="btn btn-ghost"
+                          type="button"
+                          disabled={reference.trim().length < 4 || reconcile.isPending}
+                          onClick={() => reconcile.mutate(row.id)}
+                        >
+                          Reconcile
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ))
