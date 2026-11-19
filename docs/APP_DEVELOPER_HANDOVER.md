@@ -131,7 +131,7 @@ Validation errors (missing field, password shorter than 6, bad email) use Nest�
 
 ### POST `/auth/register`
 
-Creates an active learner and returns a token. Email is stored lowercased.
+Creates a learner (`pending_verification`, `verifiedEmail: false`) and queues a verification email OTP. Email is stored lowercased.
 
 **Request**
 
@@ -152,7 +152,7 @@ Creates an active learner and returns a token. Email is stored lowercased.
 
 ```json
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy",
+  "accessToken": null,
   "learner": {
     "id": "lrn_riya",
     "firstName": "Riya",
@@ -160,14 +160,39 @@ Creates an active learner and returns a token. Email is stored lowercased.
     "email": "riya.new@learner.local",
     "phone": "9876543210",
     "city": "Patna",
-    "accountState": "active",
-    "verifiedEmail": true,
+    "accountState": "pending_verification",
+    "verifiedEmail": false,
     "verifiedPhone": false,
     "appVersion": null,
     "batchId": null
-  }
+  },
+  "challengeId": "clg_...",
+  "verificationRequired": true,
+  "message": "Check your email for a verification code"
 }
 ```
+
+Local/console provider may also return `debugOtp` (never in production).
+
+### POST `/auth/challenges/:id/verify`
+
+Body: `{ "code": "123456" }`. Marks email verified, activates the account, returns `{ accessToken, learner }`.
+
+### POST `/auth/email/resend`
+
+Body: `{ "email": "..." }` (optional if Bearer learner token is present). Queues a new verification OTP.
+
+### POST `/auth/password/forgot`
+
+Body: `{ "email": "..." }` → `{ ok, challengeId, message }`.
+
+### POST `/auth/password/verify`
+
+Body: `{ "challengeId", "code" }` → `{ resetToken, expiresIn }`.
+
+### POST `/auth/password/reset`
+
+Body: `{ "resetToken", "newPassword" }` → `{ accessToken, learner }`.
 
 ### POST `/auth/login`
 
@@ -180,7 +205,9 @@ Creates an active learner and returns a token. Email is stored lowercased.
 }
 ```
 
-**Response `201`** — same shape as register. Seeded Riya also has `verifiedPhone: true`, `city: "Patna"`, and `batchId: "seed-batch-redi"`.
+**Response `201`** — `{ accessToken, learner }`. Seeded Riya also has `verifiedPhone: true`, `city: "Patna"`, and `batchId: "seed-batch-redi"`.
+
+Unverified accounts get `401` with `code: "EMAIL_NOT_VERIFIED"` and a fresh `challengeId`.
 
 ### POST `/auth/logout`
 

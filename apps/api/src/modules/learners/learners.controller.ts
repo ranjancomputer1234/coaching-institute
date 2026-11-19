@@ -18,6 +18,7 @@ import {
 } from '../../common/guards/permissions.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IsString, MinLength } from 'class-validator';
+import { LearnerAuthService } from '../learner-auth/learner-auth.service';
 
 class ReasonDto {
   @IsString()
@@ -30,7 +31,10 @@ type Actor = { userId: string; name?: string; email?: string };
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('admin/learners')
 export class LearnersController {
-  constructor(private readonly learnersService: LearnersService) {}
+  constructor(
+    private readonly learnersService: LearnersService,
+    private readonly learnerAuth: LearnerAuthService,
+  ) {}
 
   @Get()
   @RequirePermissions('users.read')
@@ -84,5 +88,11 @@ export class LearnersController {
     @CurrentUser() user: Actor,
   ) {
     return this.learnersService.reactivate(id, dto.reason, user);
+  }
+
+  @Post(':id/resend-verification')
+  @RequirePermissions('users.update')
+  resendVerification(@Param('id') id: string) {
+    return this.learnerAuth.adminResendVerification(id);
   }
 }

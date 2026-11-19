@@ -174,6 +174,8 @@ model Learner {
   liveReminders      LiveClassReminder[]
   liveHands          LiveClassHand[]
   inboxItems         NotificationInboxItem[]
+  authChallenges     AuthChallenge[]
+  emailOutbox        EmailOutbox[]
 }
 
 model LearnerCredential {
@@ -183,6 +185,52 @@ model LearnerCredential {
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+/// Short-lived email OTP / password-reset challenge (code stored hashed).
+model AuthChallenge {
+  id          String    @id @default(cuid())
+  purpose     String // email_verify | password_reset
+  learnerId   String?
+  learner     Learner?  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  email       String
+  codeHash    String
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([email, purpose])
+  @@index([learnerId])
+  @@index([expiresAt])
+}
+
+/// DB-backed email worker queue (outbox). Worker polls pending rows.
+model EmailOutbox {
+  id          String    @id @default(cuid())
+  toEmail     String
+  toName      String?
+  templateKey String?
+  subject     String
+  htmlBody    String
+  textBody    String?
+  status      String    @default("pending") // pending|processing|sent|failed|dead
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  lastError   String?
+  providerId  String?
+  scheduledAt DateTime  @default(now())
+  sentAt      DateTime?
+  learnerId   String?
+  learner     Learner?  @relation(fields: [learnerId], references: [id], onDelete: SetNull)
+  metaJson    String    @default("{}")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([learnerId])
+  @@index([templateKey])
 }
 
 model BatchMembership {

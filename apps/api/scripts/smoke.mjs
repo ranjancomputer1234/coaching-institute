@@ -67,6 +67,33 @@ async function main() {
   const reg = await call('POST', '/auth/register', {
     body: { firstName: 'Smoke', lastName: 'Learner', email: regEmail, password: 'smoke123', city: 'Patna' },
   });
+  check(
+    'register returns verification challenge',
+    reg?.verificationRequired === true && reg?.challengeId,
+    reg,
+  );
+  if (reg?.challengeId && reg?.debugOtp) {
+    const verified = await call('POST', `/auth/challenges/${reg.challengeId}/verify`, {
+      body: { code: reg.debugOtp },
+    });
+    check('email verify returns access token', verified?.accessToken, verified);
+  }
+  const forgot = await call('POST', '/auth/password/forgot', {
+    body: { email: LEARNER.email },
+  });
+  check('password forgot returns challenge', forgot?.challengeId, forgot);
+  if (forgot?.challengeId && forgot?.debugOtp) {
+    const pv = await call('POST', '/auth/password/verify', {
+      body: { challengeId: forgot.challengeId, code: forgot.debugOtp },
+    });
+    check('password verify returns resetToken', pv?.resetToken, pv);
+    // Keep seeded password usable for the rest of smoke — reset back to learner123.
+    if (pv?.resetToken) {
+      await call('POST', '/auth/password/reset', {
+        body: { resetToken: pv.resetToken, newPassword: LEARNER.password },
+      });
+    }
+  }
   await call('POST', '/auth/register', {
     body: { firstName: 'Smoke', lastName: 'Learner', email: regEmail, password: 'smoke123' },
     expect: 400,

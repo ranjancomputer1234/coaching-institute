@@ -559,12 +559,71 @@ async function main() {
 
   const dummyCourseCount = await seedDummyCatalogue();
   await seedLearnerContentApis(batch.id);
+  await seedEmailTemplates();
 
   console.log('Learner login: riya@learner.local / learner123');
   console.log('PDF resource ID:', pdfResource.id);
   console.log('Video resource ID:', videoResource.id);
   console.log(`Dummy courses ready: ${dummyCourseCount} (public sample MP4s)`);
   console.log('Roles, permissions, learner protected-download sample data ready');
+  console.log('Email templates: email.verify, email.password_reset, email.live_class, email.result_published');
+}
+
+async function seedEmailTemplates() {
+  const templates: Array<{
+    key: string;
+    title: string;
+    body: string;
+  }> = [
+    {
+      key: 'email.verify',
+      title: 'Verify your REDI account — {{otp}}',
+      body: '<p>Hi {{firstName}},</p><p>Your verification code is <strong>{{otp}}</strong>.</p><p>It expires in {{expiresMinutes}} minutes.</p><p>— REDI</p>',
+    },
+    {
+      key: 'email.password_reset',
+      title: 'Reset your REDI password — {{otp}}',
+      body: '<p>Hi {{firstName}},</p><p>Your password reset code is <strong>{{otp}}</strong>.</p><p>It expires in {{expiresMinutes}} minutes.</p><p>— REDI</p>',
+    },
+    {
+      key: 'email.live_class',
+      title: 'Live class: {{title}}',
+      body: '<p>Hi {{firstName}},</p><p>Your live class <strong>{{title}}</strong> starts at {{startsAt}}.</p><p>{{joinUrl}}</p><p>— REDI</p>',
+    },
+    {
+      key: 'email.result_published',
+      title: 'Result published: {{testTitle}}',
+      body: '<p>Hi {{firstName}},</p><p>Your result for <strong>{{testTitle}}</strong> is available in the REDI app.</p><p>— REDI</p>',
+    },
+  ];
+
+  for (const tpl of templates) {
+    const existing = await prisma.notificationTemplate.findFirst({
+      where: { key: tpl.key, version: 1 },
+    });
+    if (existing) {
+      await prisma.notificationTemplate.update({
+        where: { id: existing.id },
+        data: {
+          title: tpl.title,
+          body: tpl.body,
+          channel: 'email',
+          lifecycle: ContentLifecycle.published,
+        },
+      });
+    } else {
+      await prisma.notificationTemplate.create({
+        data: {
+          key: tpl.key,
+          version: 1,
+          title: tpl.title,
+          body: tpl.body,
+          channel: 'email',
+          lifecycle: ContentLifecycle.published,
+        },
+      });
+    }
+  }
 }
 
 /** Exams, editorial, and live classes for learner app screens (update 031126). */

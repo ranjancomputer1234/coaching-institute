@@ -89,7 +89,8 @@ Returns:
 | Object storage streaming of encrypted PDF/video bytes | Placeholder metadata only (`PROTECTED_CONTENT_BASE_URL`) |
 | Production Widevine / FairPlay packaging + license service | Adapter fields exist; seed video has `drmScheme: none` |
 | Certificate PDF renderer / hash pipeline | Issue stores storage key + optional sha256; no PDF binary generation |
-| OTP / Google / refresh-token auth flows | Not implemented (`register`/`login` password only) |
+| Email OTP verify + password reset | Implemented (`/auth/challenges/:id/verify`, `/auth/password/*`, email outbox worker) |
+| Google / refresh-token auth flows | Not implemented |
 | Payments / checkout / live classes / notifications | Not in this slice |
 
 ## Env vars

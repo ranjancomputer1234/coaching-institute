@@ -6,6 +6,7 @@ import {
 import { AttemptStatus, AuditSeverity } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { EmailService } from '../email/email.service';
 
 type Actor = { userId: string; email?: string };
 
@@ -14,7 +15,38 @@ export class ResultsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly email: EmailService,
   ) {}
+
+  private async queueResultEmails(
+    rows: Array<{
+      attempt: {
+        test: { title: string };
+        learner: {
+          id: string;
+          firstName: string;
+          lastName: string;
+          email: string | null;
+        };
+      };
+    }>,
+  ) {
+    if (!this.email.isConfigured()) return 0;
+    let queued = 0;
+    for (const row of rows) {
+      const learner = row.attempt.learner;
+      if (!learner.email) continue;
+      await this.email.enqueueResultPublished({
+        toEmail: learner.email,
+        toName: `${learner.firstName} ${learner.lastName}`.trim(),
+        learnerId: learner.id,
+        firstName: learner.firstName,
+        testTitle: row.attempt.test.title,
+      });
+      queued += 1;
+    }
+    return queued;
+  }
 
   findAll(published?: boolean) {
     return this.prisma.result.findMany({
@@ -68,6 +100,21 @@ export class ResultsService {
         published: false,
         attempt: { testId },
       },
+      include: {
+        attempt: {
+          include: {
+            test: { select: { title: true } },
+            learner: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
     });
     if (!unpublished.length) {
       throw new BadRequestException({
@@ -94,18 +141,20 @@ export class ResultsService {
       }
     });
 
+    const emailQueued = await this.queueResultEmails(unpublished);
+
     await this.audit.write({
       actorId: actor.userId,
       actorDisplay: actor.email,
       action: 'results.publish',
       resourceType: 'Test',
       resourceId: testId,
-      after: { affected: unpublished.length },
+      after: { affected: unpublished.length, emailQueued },
       reason,
       severity: AuditSeverity.high,
     });
 
-    return { published: unpublished.length, testId };
+    return { published: unpublished.length, testId, emailQueued };
   }
 
   async publishOne(id: string, reason: string | undefined, actor: Actor) {
@@ -128,6 +177,20 @@ export class ResultsService {
       });
       return r;
     });
+    const emailQueued = await this.queueResultEmails([
+      {
+        attempt: {
+          test: { title: result.attempt.test.title },
+          learner: {
+            id: result.attempt.learner.id,
+            firstName: result.attempt.learner.firstName,
+            lastName: result.attempt.learner.lastName,
+            email: result.attempt.learner.email,
+          },
+        },
+      },
+    ]);
+
     await this.audit.write({
       actorId: actor.userId,
       actorDisplay: actor.email,
@@ -135,8 +198,9 @@ export class ResultsService {
       resourceType: 'Result',
       resourceId: id,
       reason,
+      after: { emailQueued },
       severity: AuditSeverity.notice,
     });
-    return updated;
+    return { ...updated, emailQueued };
   }
 }

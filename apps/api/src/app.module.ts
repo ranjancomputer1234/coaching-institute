@@ -31,6 +31,8 @@ import { LearnerExamsModule } from './modules/learner-exams/learner-exams.module
 import { LearnerEditorialModule } from './modules/learner-editorial/learner-editorial.module';
 import { LearnerLiveModule } from './modules/learner-live/learner-live.module';
 import { LearnerNotificationsModule } from './modules/learner-notifications/learner-notifications.module';
+import { EmailModule } from './modules/email/email.module';
+import { DiagnosticsModule } from './modules/diagnostics/diagnostics.module';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { LearnerNotificationsModule } from './modules/learner-notifications/lear
       envFilePath: apiEnvFilePath(),
     }),
     DatabaseModule,
+    EmailModule,
+    DiagnosticsModule,
     AuditModule,
     UsersModule,
     AuthModule,

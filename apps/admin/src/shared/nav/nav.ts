@@ -3,7 +3,7 @@ import {
   FolderKanban, HelpCircle, FileText, ClipboardList, BarChart3, Radio, Compass,
   Image, Newspaper, Lightbulb, Sparkles, Mic, ShoppingBag, TicketPercent, ShoppingCart,
   RotateCcw, Bell, Mail, Award, IdCard, LifeBuoy, PieChart, Scale, ScrollText, Settings,
-  GraduationCap, KeyRound, type LucideIcon,
+  GraduationCap, KeyRound, FlaskConical, type LucideIcon,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -96,6 +96,12 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Reports', to: '/reports', icon: PieChart, permission: 'reports.read' },
       { label: 'Audit Log', to: '/audit', icon: ScrollText, permission: 'audit.read' },
       { label: 'Settings', to: '/settings', icon: Settings, permission: 'settings.manage' },
+      {
+        label: 'System tests',
+        to: '/system-tests',
+        icon: FlaskConical,
+        permission: 'settings.manage',
+      },
     ],
   },
 ];

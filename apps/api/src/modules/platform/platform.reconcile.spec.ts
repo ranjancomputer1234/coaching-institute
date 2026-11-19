@@ -34,12 +34,19 @@ describe('PlatformService.reconcileOrder', () => {
   const daily = {
     isConfigured: jest.fn().mockReturnValue(false),
   } as unknown as DailyService;
+  const email = {
+    isConfigured: jest.fn().mockReturnValue(false),
+    providerName: jest.fn().mockReturnValue('console'),
+    enqueueRaw: jest.fn(),
+    enqueueLiveClass: jest.fn(),
+  };
 
   const service = new PlatformService(
     prisma as unknown as PrismaService,
     audit as unknown as AuditService,
     config,
     daily,
+    email as never,
   );
   const actor = { userId: 'admin-1', email: 'admin@test.local' };
 

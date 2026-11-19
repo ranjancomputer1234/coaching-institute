@@ -16,6 +16,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { EmailService } from '../email/email.service';
 import { DailyService } from './daily.service';
 import { LEGAL_PAGE_DEFAULTS } from './legal-pages';
 import {
@@ -51,6 +52,7 @@ export class PlatformService {
     private readonly audit: AuditService,
     private readonly config: ConfigService,
     private readonly daily: DailyService,
+    private readonly email: EmailService,
   ) {}
 
   providers() {
@@ -58,7 +60,8 @@ export class PlatformService {
       // Daily live rooms — requires API key (URL alone is not enough).
       live: this.daily.isConfigured(),
       push: Boolean(this.config.get('PUSH_PROVIDER_KEY')),
-      email: Boolean(this.config.get('EMAIL_PROVIDER_KEY')),
+      email: this.email.isConfigured(),
+      emailProvider: this.email.providerName(),
       payments: Boolean(this.config.get('PAYMENT_PROVIDER_KEY')),
       storage: Boolean(this.config.get('OBJECT_STORAGE_BUCKET')),
       video: Boolean(
@@ -690,10 +693,51 @@ export class PlatformService {
       severity: AuditSeverity.notice,
     });
 
+    let emailQueued = 0;
+    if (emailReady && audienceIds.length) {
+      const learners = await this.prisma.learner.findMany({
+        where: {
+          id: { in: audienceIds },
+          email: { not: null },
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+        },
+      });
+      for (const learner of learners) {
+        if (!learner.email) continue;
+        await this.email.enqueueLiveClass({
+          toEmail: learner.email,
+          toName: `${learner.firstName} ${learner.lastName}`.trim(),
+          learnerId: learner.id,
+          firstName: learner.firstName,
+          title: existing.title,
+          startsAt: when,
+          joinUrl,
+        });
+        emailQueued += 1;
+      }
+      if (emailQueued > 0) {
+        await this.prisma.notificationCampaign.update({
+          where: { id: campaign.id },
+          data: {
+            status: 'queued',
+            providerStatus: `email_outbox:${emailQueued}`,
+            failureReason: null,
+          },
+        });
+      }
+    }
+
     const notifyNote =
-      pushReady || emailReady
-        ? 'Notification campaign queued (delivery adapter still pending).'
-        : 'Set PUSH_PROVIDER_KEY / EMAIL_PROVIDER_KEY later to deliver app push and email.';
+      emailQueued > 0
+        ? `${emailQueued} class email(s) queued for delivery.`
+        : pushReady || emailReady
+          ? 'Notification campaign recorded (push adapter still pending).'
+          : 'Set EMAIL_PROVIDER / EMAIL_PROVIDER_KEY to email class invites.';
 
     return {
       ...row,
@@ -702,7 +746,8 @@ export class PlatformService {
       notify: {
         push: pushReady,
         email: emailReady,
-        queued: Boolean(pushReady || emailReady),
+        emailQueued,
+        queued: Boolean(pushReady || emailQueued),
         campaignId: campaign.id,
       },
       message: `Daily room ready. ${audienceIds.length} student(s) in audience. ${notifyNote}`,
@@ -1023,6 +1068,28 @@ export class PlatformService {
       return { inboxCreated: created, row: updated };
     });
 
+    let emailQueued = 0;
+    if (this.email.isConfigured() && learnerIds.length) {
+      const learners = await this.prisma.learner.findMany({
+        where: { id: { in: learnerIds }, email: { not: null } },
+        select: { id: true, email: true, firstName: true, lastName: true },
+      });
+      for (const learner of learners) {
+        if (!learner.email) continue;
+        await this.email.enqueueRaw({
+          toEmail: learner.email,
+          toName: `${learner.firstName} ${learner.lastName}`.trim(),
+          learnerId: learner.id,
+          subject: queued.title,
+          htmlBody: `<p>${queued.body.replace(/\n/g, '<br/>')}</p>`,
+          textBody: queued.body,
+          templateKey: 'campaign.custom',
+          meta: { campaignId: queued.id },
+        });
+        emailQueued += 1;
+      }
+    }
+
     await this.audit.write({
       actorId: actor.userId,
       actorDisplay: actor.email,
@@ -1035,10 +1102,16 @@ export class PlatformService {
         providerStatus: row.providerStatus,
         recipientCount: row.recipientCount,
         inboxCreated,
+        emailQueued,
       },
       severity: AuditSeverity.notice,
     });
-    return { ...row, recipientCount: row.recipientCount, inboxCreated };
+    return {
+      ...row,
+      recipientCount: row.recipientCount,
+      inboxCreated,
+      emailQueued,
+    };
   }
 
   listProducts() {

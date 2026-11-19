@@ -30,6 +30,7 @@ import { EntitlementsPage } from '../features/entitlements/pages/EntitlementsPag
 import { SupportPage } from '../features/support/pages/SupportPage';
 import { ReportsPage } from '../features/reports/pages/ReportsPage';
 import { SettingsPage } from '../features/settings/pages/SettingsPage';
+import { SystemTestsPage } from '../features/diagnostics/pages/SystemTestsPage';
 import { RecordScreen } from '../features/records/RecordScreen';
 
 export function AppRoutes() {
@@ -252,6 +253,7 @@ export function AppRoutes() {
             <Route path="legal" element={<LegalPagesPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="system-tests" element={<SystemTestsPage />} />
           </Route>
         </Route>
         <Route path="students" element={<Navigate to="/learners" replace />} />
