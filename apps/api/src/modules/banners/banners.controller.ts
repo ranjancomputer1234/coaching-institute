@@ -68,4 +68,10 @@ export class BannersController {
   pause(@Param('id') id: string, @CurrentUser() user: Actor) {
     return this.bannersService.pause(id, user);
   }
+
+  @Post(':id/archive')
+  @RequirePermissions('banners.manage')
+  archive(@Param('id') id: string, @CurrentUser() user: Actor) {
+    return this.bannersService.archive(id, user);
+  }
 }

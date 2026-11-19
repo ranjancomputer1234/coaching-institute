@@ -242,4 +242,26 @@ export class TestsService {
     });
     return published;
   }
+
+  async archive(id: string, actor: Actor) {
+    const before = await this.findOne(id);
+    const archived = await this.prisma.test.update({
+      where: { id },
+      data: {
+        lifecycle: ContentLifecycle.archived,
+        revision: { increment: 1 },
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'test.archive',
+      resourceType: 'Test',
+      resourceId: id,
+      before: { lifecycle: before.lifecycle },
+      after: { lifecycle: archived.lifecycle },
+      severity: AuditSeverity.notice,
+    });
+    return archived;
+  }
 }

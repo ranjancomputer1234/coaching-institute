@@ -80,6 +80,12 @@ export class CoursesController {
     return this.coursesService.unpublish(id, user);
   }
 
+  @Post(':id/archive')
+  @RequirePermissions('content.archive')
+  archive(@Param('id') id: string, @CurrentUser() user: Actor) {
+    return this.coursesService.archive(id, user);
+  }
+
   @Post(':id/lessons')
   @RequirePermissions('content.edit')
   addLesson(

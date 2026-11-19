@@ -108,6 +108,8 @@ export function AppRoutes() {
                   listPath="/admin/products"
                   createPath="/admin/products"
                   updatePath={(id) => `/admin/products/${id}`}
+                  archivePath={(id) => `/admin/products/${id}/archive`}
+                  deleteDisabled={(row) => row.lifecycle === 'archived'}
                   permission="payments.read"
                   fields={[
                     { name: 'sku', label: 'SKU', required: true },
@@ -147,6 +149,8 @@ export function AppRoutes() {
                   listPath="/admin/coupons"
                   createPath="/admin/coupons"
                   updatePath={(id) => `/admin/coupons/${id}`}
+                  deletePath={{ method: 'PATCH', url: (id) => `/admin/coupons/${id}`, body: { active: false } }}
+                  deleteDisabled={(row) => row.active === false}
                   permission="payments.read"
                   fields={[
                     { name: 'code', label: 'Code', required: true },

@@ -7,7 +7,10 @@ import {
   filterBySearch,
   filterWhen,
 } from '../../../shared/lib/tableFilters';
+import { confirmDelete } from '../../../shared/lib/confirmDelete';
+import { usePersistedViewMode } from '../../../shared/lib/usePersistedViewMode';
 import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
+import { LayoutViewToggle } from '../../../shared/ui/LayoutViewToggle';
 import { PageHeaderActions } from '../../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
 import { TableFilterBar } from '../../../shared/ui/TableFilterBar';
@@ -86,6 +89,7 @@ export function CoursesPage() {
   const [search, setSearch] = useState('');
   const [lifecycle, setLifecycle] = useState('');
   const [mode, setMode] = useState('');
+  const [viewMode, setViewMode] = usePersistedViewMode('admin.courses.view');
 
   const list = useQuery({
     queryKey: ['courses'],
@@ -209,6 +213,15 @@ export function CoursesPage() {
     },
   });
 
+  const archive = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/courses/${id}/archive`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['courses'] });
+      queryClient.invalidateQueries({ queryKey: ['course'] });
+    },
+  });
+
   const publishLesson = useMutation({
     mutationFn: ({ courseId, lessonId }: { courseId: string; lessonId: string }) =>
       apiFetch(`/admin/courses/${courseId}/lessons/${lessonId}/publish`, {
@@ -281,13 +294,14 @@ export function CoursesPage() {
           <h1>Courses</h1>
           <p>Create, edit, and publish learning courses</p>
         </div>
-        {hasPermission('content.create') ? (
-          <PageHeaderActions>
+        <PageHeaderActions>
+          <LayoutViewToggle value={viewMode} onChange={setViewMode} />
+          {hasPermission('content.create') ? (
             <button type="button" className="btn" onClick={() => setDrawerOpen(true)}>
               Create draft
             </button>
-          </PageHeaderActions>
-        ) : null}
+          ) : null}
+        </PageHeaderActions>
       </div>
 
       <PageState
@@ -325,67 +339,79 @@ export function CoursesPage() {
             setMode('');
           }}
         />
-        <div className="panel">
-          <table>
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Cover</th>
-                <th>Title</th>
-                <th>Slug</th>
-                <th>Access</th>
-                <th>Lifecycle</th>
-                <th>Lessons</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        {viewMode === 'grid' ? (
+          <div className="entity-grid">
+            {filtered.length === 0 ? (
+              <p className="muted">No rows match filters.</p>
+            ) : (
+              filtered.map((course) => (
+                <div key={course.id} className="entity-card">
+                  {course.coverImageUrl ? (
+                    <img className="entity-card-cover" src={course.coverImageUrl} alt="" />
+                  ) : (
+                    <div className="entity-card-cover-empty" />
+                  )}
+                  <div className="entity-card-meta">
+                    <strong>{course.title}</strong>
+                    <StatusPill value={course.lifecycle} />
+                    <span className="muted small">{course.slug}</span>
+                    <span>{formatAccess(course)}</span>
+                    <span className="muted small">{course._count?.lessons ?? 0} lessons</span>
+                  </div>
+                  <div className="entity-card-actions action-row">
+                    {hasPermission('content.edit') ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          setEditing(course);
+                          setShortTitle(course.shortTitle ?? '');
+                          setSummary(course.summary ?? '');
+                          setCommercialMode(course.commercialMode || 'free');
+                          setPriceRupees(course.pricePaise ? String(Math.round(course.pricePaise / 100)) : '');
+                          setIconUrl(course.iconUrl ?? '');
+                          setCoverImageUrl(course.coverImageUrl ?? '');
+                          setFormError(null);
+                        }}
+                      >
+                        Edit
+                      </button>
+                    ) : null}
+                    {hasPermission('content.publish') && course.lifecycle !== 'published' ? (
+                      <button type="button" className="btn" onClick={() => publish.mutate(course.id)}>
+                        Publish
+                      </button>
+                    ) : null}
+                    {hasPermission('content.archive') && course.lifecycle !== 'archived' ? (
+                      <button
+                        type="button"
+                        className="btn btn-danger-ghost"
+                        onClick={() => { if (confirmDelete(course.title)) archive.mutate(course.id); }}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : viewMode === 'compact' ? (
+          <div className="panel">
+            <ul className="entity-compact-list">
               {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="muted">
-                    No rows match filters.
-                  </td>
-                </tr>
+                <li className="muted">No rows match filters.</li>
               ) : (
                 filtered.map((course) => (
-                  <tr key={course.id}>
-                    <td>
-                      <div className="action-row">
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          disabled={reorder.isPending}
-                          onClick={() => moveCourse(course.id, -1)}
-                          aria-label="Move up"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          disabled={reorder.isPending}
-                          onClick={() => moveCourse(course.id, 1)}
-                          aria-label="Move down"
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    </td>
-                    <td>
-                      {course.coverImageUrl ? (
-                        <img className="banner-thumb" src={course.coverImageUrl} alt="" />
-                      ) : (
-                        <span className="muted">No cover</span>
-                      )}
-                    </td>
-                    <td>{course.title}</td>
-                    <td className="muted">{course.slug}</td>
-                    <td>{formatAccess(course)}</td>
-                    <td>
+                  <li key={course.id}>
+                    <div className="entity-compact-main">
+                      <strong>{course.title}</strong>
+                      <span className="muted small">
+                        {course.slug} · {formatAccess(course)} · {course._count?.lessons ?? 0} lessons
+                      </span>
                       <StatusPill value={course.lifecycle} />
-                    </td>
-                    <td>{course._count?.lessons ?? 0}</td>
-                    <td className="action-row">
+                    </div>
+                    <div className="entity-card-actions action-row">
                       {hasPermission('content.edit') ? (
                         <button
                           type="button"
@@ -395,11 +421,7 @@ export function CoursesPage() {
                             setShortTitle(course.shortTitle ?? '');
                             setSummary(course.summary ?? '');
                             setCommercialMode(course.commercialMode || 'free');
-                            setPriceRupees(
-                              course.pricePaise
-                                ? String(Math.round(course.pricePaise / 100))
-                                : '',
-                            );
+                            setPriceRupees(course.pricePaise ? String(Math.round(course.pricePaise / 100)) : '');
                             setIconUrl(course.iconUrl ?? '');
                             setCoverImageUrl(course.coverImageUrl ?? '');
                             setFormError(null);
@@ -408,56 +430,173 @@ export function CoursesPage() {
                           Edit
                         </button>
                       ) : null}
-                      {hasPermission('content.edit') ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => {
-                            addLesson.reset();
-                            setLessonTitle('');
-                            setLessonDescription('');
-                            setLessonCourse(course);
-                          }}
-                        >
-                          Add lesson
-                        </button>
-                      ) : null}
-                      {hasPermission('content.edit') ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => setManageCourse(course)}
-                        >
-                          Lessons
-                        </button>
-                      ) : null}
-                      {hasPermission('content.publish') &&
-                      course.lifecycle !== 'published' ? (
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => publish.mutate(course.id)}
-                        >
+                      {hasPermission('content.publish') && course.lifecycle !== 'published' ? (
+                        <button type="button" className="btn" onClick={() => publish.mutate(course.id)}>
                           Publish
                         </button>
                       ) : null}
-                      {hasPermission('content.publish') &&
-                      course.lifecycle === 'published' ? (
+                      {hasPermission('content.archive') && course.lifecycle !== 'archived' ? (
                         <button
                           type="button"
-                          className="btn btn-ghost"
-                          onClick={() => unpublish.mutate(course.id)}
+                          className="btn btn-danger-ghost"
+                          onClick={() => { if (confirmDelete(course.title)) archive.mutate(course.id); }}
                         >
-                          Unpublish
+                          Delete
                         </button>
                       ) : null}
-                    </td>
-                  </tr>
+                    </div>
+                  </li>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </div>
+        ) : (
+          <div className="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Cover</th>
+                  <th>Title</th>
+                  <th>Slug</th>
+                  <th>Access</th>
+                  <th>Lifecycle</th>
+                  <th>Lessons</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="muted">
+                      No rows match filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((course) => (
+                    <tr key={course.id}>
+                      <td>
+                        <div className="action-row">
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={reorder.isPending}
+                            onClick={() => moveCourse(course.id, -1)}
+                            aria-label="Move up"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={reorder.isPending}
+                            onClick={() => moveCourse(course.id, 1)}
+                            aria-label="Move down"
+                          >
+                            ↓
+                          </button>
+                        </div>
+                      </td>
+                      <td>
+                        {course.coverImageUrl ? (
+                          <img className="banner-thumb" src={course.coverImageUrl} alt="" />
+                        ) : (
+                          <span className="muted">No cover</span>
+                        )}
+                      </td>
+                      <td>{course.title}</td>
+                      <td className="muted">{course.slug}</td>
+                      <td>{formatAccess(course)}</td>
+                      <td>
+                        <StatusPill value={course.lifecycle} />
+                      </td>
+                      <td>{course._count?.lessons ?? 0}</td>
+                      <td className="action-row">
+                        {hasPermission('content.edit') ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => {
+                              setEditing(course);
+                              setShortTitle(course.shortTitle ?? '');
+                              setSummary(course.summary ?? '');
+                              setCommercialMode(course.commercialMode || 'free');
+                              setPriceRupees(
+                                course.pricePaise
+                                  ? String(Math.round(course.pricePaise / 100))
+                                  : '',
+                              );
+                              setIconUrl(course.iconUrl ?? '');
+                              setCoverImageUrl(course.coverImageUrl ?? '');
+                              setFormError(null);
+                            }}
+                          >
+                            Edit
+                          </button>
+                        ) : null}
+                        {hasPermission('content.edit') ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => {
+                              addLesson.reset();
+                              setLessonTitle('');
+                              setLessonDescription('');
+                              setLessonCourse(course);
+                            }}
+                          >
+                            Add lesson
+                          </button>
+                        ) : null}
+                        {hasPermission('content.edit') ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => setManageCourse(course)}
+                          >
+                            Lessons
+                          </button>
+                        ) : null}
+                        {hasPermission('content.publish') &&
+                        course.lifecycle !== 'published' ? (
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => publish.mutate(course.id)}
+                          >
+                            Publish
+                          </button>
+                        ) : null}
+                        {hasPermission('content.publish') &&
+                        course.lifecycle === 'published' ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => unpublish.mutate(course.id)}
+                          >
+                            Unpublish
+                          </button>
+                        ) : null}
+                        {hasPermission('content.archive') &&
+                        course.lifecycle !== 'archived' ? (
+                          <button
+                            type="button"
+                            className="btn btn-danger-ghost"
+                            onClick={() => {
+                              if (confirmDelete(course.title)) archive.mutate(course.id);
+                            }}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </PageState>
 
       <ContentDrawer

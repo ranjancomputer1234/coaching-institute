@@ -116,4 +116,23 @@ export class ExamsService {
     });
     return exam;
   }
+
+  async archive(id: string, actor: Actor) {
+    const before = await this.findOne(id);
+    const exam = await this.prisma.exam.update({
+      where: { id },
+      data: { lifecycle: ContentLifecycle.archived },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'exam.archive',
+      resourceType: 'Exam',
+      resourceId: id,
+      before: { lifecycle: before.lifecycle },
+      after: { lifecycle: exam.lifecycle },
+      severity: AuditSeverity.notice,
+    });
+    return exam;
+  }
 }

@@ -73,4 +73,13 @@ export class ExploreController {
   ) {
     return this.exploreService.publish(id, user);
   }
+
+  @Post(':id/archive')
+  @RequirePermissions('explore.manage')
+  archive(
+    @Param('id') id: string,
+    @CurrentUser() user: { userId: string; email: string },
+  ) {
+    return this.exploreService.archive(id, user);
+  }
 }

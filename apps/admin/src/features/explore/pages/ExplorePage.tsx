@@ -7,7 +7,10 @@ import {
   filterBySearch,
   filterWhen,
 } from '../../../shared/lib/tableFilters';
+import { confirmDelete } from '../../../shared/lib/confirmDelete';
+import { usePersistedViewMode } from '../../../shared/lib/usePersistedViewMode';
 import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
+import { LayoutViewToggle } from '../../../shared/ui/LayoutViewToggle';
 import { PageHeaderActions } from '../../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
 import { TableFilterBar } from '../../../shared/ui/TableFilterBar';
@@ -73,6 +76,7 @@ export function ExplorePage() {
   const [search, setSearch] = useState('');
   const [lifecycle, setLifecycle] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [viewMode, setViewMode] = usePersistedViewMode('admin.explore.view');
 
   const list = useQuery({
     queryKey: ['explore'],
@@ -163,6 +167,12 @@ export function ExplorePage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['explore'] }),
   });
 
+  const archive = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/explore-sections/${id}/archive`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['explore'] }),
+  });
+
   const reorder = useMutation({
     mutationFn: (orderedIds: string[]) =>
       apiFetch('/admin/explore-sections/reorder', {
@@ -218,13 +228,14 @@ export function ExplorePage() {
           <h1>Explore sections</h1>
           <p>Rename and reorder without breaking stable IDs or deep links</p>
         </div>
-        {canManage ? (
-          <PageHeaderActions>
+        <PageHeaderActions>
+          <LayoutViewToggle value={viewMode} onChange={setViewMode} />
+          {canManage ? (
             <button type="button" className="btn" onClick={openCreate}>
               Create draft
             </button>
-          </PageHeaderActions>
-        ) : null}
+          ) : null}
+        </PageHeaderActions>
       </div>
 
       <PageState
@@ -261,92 +272,152 @@ export function ExplorePage() {
             setCategoryFilter('');
           }}
         />
-        <div className="panel">
-          <table>
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Title</th>
-                <th>Slug</th>
-                <th>Target</th>
-                <th>State</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="muted">
-                    No rows match filters.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((section) => (
-                  <tr key={section.id}>
-                    <td>
-                      <div className="action-row">
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          disabled={reorder.isPending}
-                          onClick={() => moveSection(section.id, -1)}
-                          aria-label="Move up"
-                        >
-                          ↑
-                        </button>
-                        <span>{section.sortOrder}</span>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          disabled={reorder.isPending}
-                          onClick={() => moveSection(section.id, 1)}
-                          aria-label="Move down"
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    </td>
-                    <td>{section.title}</td>
-                    <td className="muted">{section.slug}</td>
-                    <td>
-                      {section.targetKind}:{section.targetRef}
-                    </td>
-                    <td>
-                      <StatusPill value={section.lifecycle} />
-                    </td>
-                    <td className="action-row">
+        {viewMode === 'grid' ? (
+          <div className="entity-grid">
+            {filtered.length === 0 ? (
+              <p className="muted">No rows match filters.</p>
+            ) : (
+              filtered.map((section) => (
+                <div key={section.id} className="entity-card">
+                  <div className="entity-card-cover-empty" />
+                  <div className="entity-card-meta">
+                    <strong>{section.title}</strong>
+                    <StatusPill value={section.lifecycle} />
+                    <span className="muted small">{section.category} · {section.targetKind}:{section.targetRef}</span>
+                  </div>
+                  <div className="entity-card-actions action-row">
+                    <button type="button" className="btn btn-ghost" onClick={() => openView(section)}>View</button>
+                    {canManage ? <button type="button" className="btn btn-ghost" onClick={() => openEdit(section)}>Edit</button> : null}
+                    {canManage && section.lifecycle !== 'published' ? (
+                      <button type="button" className="btn" onClick={() => publish.mutate(section.id)}>Publish</button>
+                    ) : null}
+                    {canManage && section.lifecycle !== 'archived' ? (
                       <button
                         type="button"
-                        className="btn btn-ghost"
-                        onClick={() => openView(section)}
+                        className="btn btn-danger-ghost"
+                        onClick={() => { if (confirmDelete(section.title)) archive.mutate(section.id); }}
                       >
-                        View
+                        Delete
                       </button>
-                      {canManage ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => openEdit(section)}
-                        >
-                          Edit
-                        </button>
-                      ) : null}
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : viewMode === 'compact' ? (
+          <div className="panel">
+            <ul className="entity-compact-list">
+              {filtered.length === 0 ? (
+                <li className="muted">No rows match filters.</li>
+              ) : (
+                filtered.map((section) => (
+                  <li key={section.id}>
+                    <div className="entity-compact-main">
+                      <strong>{section.title}</strong>
+                      <span className="muted small">{section.slug} · {section.category}</span>
+                      <StatusPill value={section.lifecycle} />
+                    </div>
+                    <div className="entity-card-actions action-row">
+                      <button type="button" className="btn btn-ghost" onClick={() => openView(section)}>View</button>
+                      {canManage ? <button type="button" className="btn btn-ghost" onClick={() => openEdit(section)}>Edit</button> : null}
                       {canManage && section.lifecycle !== 'published' ? (
+                        <button type="button" className="btn" onClick={() => publish.mutate(section.id)}>Publish</button>
+                      ) : null}
+                      {canManage && section.lifecycle !== 'archived' ? (
                         <button
                           type="button"
-                          className="btn"
-                          onClick={() => publish.mutate(section.id)}
+                          className="btn btn-danger-ghost"
+                          onClick={() => { if (confirmDelete(section.title)) archive.mutate(section.id); }}
                         >
-                          Publish
+                          Delete
                         </button>
                       ) : null}
-                    </td>
-                  </tr>
+                    </div>
+                  </li>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </div>
+        ) : (
+          <div className="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Title</th>
+                  <th>Slug</th>
+                  <th>Target</th>
+                  <th>State</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="muted">
+                      No rows match filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((section) => (
+                    <tr key={section.id}>
+                      <td>
+                        <div className="action-row">
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={reorder.isPending}
+                            onClick={() => moveSection(section.id, -1)}
+                            aria-label="Move up"
+                          >
+                            ↑
+                          </button>
+                          <span>{section.sortOrder}</span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={reorder.isPending}
+                            onClick={() => moveSection(section.id, 1)}
+                            aria-label="Move down"
+                          >
+                            ↓
+                          </button>
+                        </div>
+                      </td>
+                      <td>{section.title}</td>
+                      <td className="muted">{section.slug}</td>
+                      <td>
+                        {section.targetKind}:{section.targetRef}
+                      </td>
+                      <td>
+                        <StatusPill value={section.lifecycle} />
+                      </td>
+                      <td className="action-row">
+                        <button type="button" className="btn btn-ghost" onClick={() => openView(section)}>View</button>
+                        {canManage ? (
+                          <button type="button" className="btn btn-ghost" onClick={() => openEdit(section)}>Edit</button>
+                        ) : null}
+                        {canManage && section.lifecycle !== 'published' ? (
+                          <button type="button" className="btn" onClick={() => publish.mutate(section.id)}>Publish</button>
+                        ) : null}
+                        {canManage && section.lifecycle !== 'archived' ? (
+                          <button
+                            type="button"
+                            className="btn btn-danger-ghost"
+                            onClick={() => { if (confirmDelete(section.title)) archive.mutate(section.id); }}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </PageState>
 
       <ContentDrawer open={drawerOpen} onClose={closeDrawer} title={drawerTitle} size="full">

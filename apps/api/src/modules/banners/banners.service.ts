@@ -183,4 +183,26 @@ export class BannersService {
     });
     return banner;
   }
+
+  async archive(id: string, actor: Actor) {
+    const before = await this.findOne(id);
+    const banner = await this.prisma.banner.update({
+      where: { id },
+      data: {
+        lifecycle: ContentLifecycle.archived,
+        revision: { increment: 1 },
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'banner.archive',
+      resourceType: 'Banner',
+      resourceId: id,
+      before: { lifecycle: before.lifecycle },
+      after: { lifecycle: banner.lifecycle },
+      severity: AuditSeverity.notice,
+    });
+    return banner;
+  }
 }

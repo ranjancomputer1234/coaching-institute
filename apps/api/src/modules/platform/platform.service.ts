@@ -335,6 +335,47 @@ export class PlatformService {
     return item;
   }
 
+  async archiveEditorial(id: string, actor: Actor) {
+    const before = await this.getEditorial(id);
+    const item = await this.prisma.editorialItem.update({
+      where: { id },
+      data: {
+        lifecycle: ContentLifecycle.archived,
+        revision: { increment: 1 },
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'editorial.archive',
+      resourceType: 'EditorialItem',
+      resourceId: id,
+      before: { lifecycle: before.lifecycle },
+      after: { lifecycle: item.lifecycle },
+      severity: AuditSeverity.notice,
+    });
+    return item;
+  }
+
+  async archiveContentCategory(id: string, actor: Actor) {
+    const before = await this.getContentCategory(id);
+    const row = await this.prisma.contentCategory.update({
+      where: { id },
+      data: { lifecycle: ContentLifecycle.archived },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'content_category.archive',
+      resourceType: 'ContentCategory',
+      resourceId: id,
+      before: { lifecycle: before.lifecycle },
+      after: { lifecycle: row.lifecycle },
+      severity: AuditSeverity.notice,
+    });
+    return row;
+  }
+
   listLiveClasses() {
     return this.prisma.liveClass.findMany({
       include: {
@@ -356,6 +397,26 @@ export class PlatformService {
         fieldErrors: {},
       });
     }
+    return row;
+  }
+
+  async cancelLiveClass(id: string, actor: Actor) {
+    const before = await this.getLiveClass(id);
+    const row = await this.prisma.liveClass.update({
+      where: { id },
+      data: { status: LiveClassStatus.cancelled },
+      include: { batch: { select: { id: true, name: true } } },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'live.cancel',
+      resourceType: 'LiveClass',
+      resourceId: id,
+      before: { status: before.status },
+      after: { status: row.status },
+      severity: AuditSeverity.notice,
+    });
     return row;
   }
 
@@ -768,6 +829,28 @@ export class PlatformService {
     return row;
   }
 
+  async deleteCampaign(id: string, actor: Actor) {
+    const existing = await this.getCampaign(id);
+    if (existing.status !== 'draft') {
+      throw new BadRequestException({
+        code: 'CAMPAIGN_LOCKED',
+        message: 'Only draft campaigns can be deleted',
+        fieldErrors: {},
+      });
+    }
+    await this.prisma.notificationCampaign.delete({ where: { id } });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'notification.campaign_delete',
+      resourceType: 'NotificationCampaign',
+      resourceId: id,
+      before: { title: existing.title, status: existing.status },
+      severity: AuditSeverity.notice,
+    });
+    return { id, deleted: true };
+  }
+
   async updateCampaign(id: string, dto: UpdateCampaignDto, actor: Actor) {
     const existing = await this.getCampaign(id);
     if (existing.status !== 'draft') {
@@ -1012,6 +1095,25 @@ export class PlatformService {
       resourceType: 'Product',
       resourceId: id,
       after: { sku: row.sku, pricePaise: row.pricePaise },
+    });
+    return row;
+  }
+
+  async archiveProduct(id: string, actor: Actor) {
+    const before = await this.getProduct(id);
+    const row = await this.prisma.product.update({
+      where: { id },
+      data: { lifecycle: ContentLifecycle.archived },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'product.archive',
+      resourceType: 'Product',
+      resourceId: id,
+      before: { lifecycle: before.lifecycle },
+      after: { lifecycle: row.lifecycle },
+      severity: AuditSeverity.notice,
     });
     return row;
   }

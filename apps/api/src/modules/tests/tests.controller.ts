@@ -74,4 +74,13 @@ export class TestsController {
   ) {
     return this.testsService.publish(id, user);
   }
+
+  @Post(':id/archive')
+  @RequirePermissions('assessments.author')
+  archive(
+    @Param('id') id: string,
+    @CurrentUser() user: { userId: string; email: string },
+  ) {
+    return this.testsService.archive(id, user);
+  }
 }

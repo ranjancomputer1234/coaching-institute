@@ -7,7 +7,9 @@ import {
   filterBySearch,
   filterWhen,
 } from '../../../shared/lib/tableFilters';
+import { usePersistedViewMode } from '../../../shared/lib/usePersistedViewMode';
 import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
+import { LayoutViewToggle } from '../../../shared/ui/LayoutViewToggle';
 import { PageHeaderActions } from '../../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
 import {
@@ -90,6 +92,7 @@ export function LiveClassesPage() {
   const [status, setStatus] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [viewMode, setViewMode] = usePersistedViewMode('admin.live.view');
 
   const list = useQuery({
     queryKey: ['live-classes'],
@@ -249,6 +252,12 @@ export function LiveClassesPage() {
     },
   });
 
+  const cancel = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/live-classes/${id}/cancel`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['live-classes'] }),
+  });
+
   const rows = list.data ?? [];
   const filtered = useMemo(() => {
     let next = rows;
@@ -288,6 +297,7 @@ export function LiveClassesPage() {
           </p>
         </div>
         <PageHeaderActions>
+          <LayoutViewToggle value={viewMode} onChange={setViewMode} />
           <button type="button" className="btn" onClick={openCreate}>
             Schedule class
           </button>
@@ -327,81 +337,152 @@ export function LiveClassesPage() {
             setDateTo('');
           }}
         />
-        <div className="panel">
-          <table>
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Audience</th>
-                <th>Starts</th>
-                <th>Provider</th>
-                <th>Status</th>
-                <th>Join</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        {viewMode === 'grid' ? (
+          <div className="entity-grid">
+            {filtered.length === 0 ? (
+              <p className="muted">No rows match filters.</p>
+            ) : (
+              filtered.map((row) => {
+                const customCount = parseIds(row.audienceLearnerIdsJson).length;
+                const audience = row.batch?.name ?? (customCount ? `${customCount} students` : '—');
+                return (
+                  <div key={row.id} className="entity-card">
+                    <div className="entity-card-cover-empty" />
+                    <div className="entity-card-meta">
+                      <strong>{row.title}</strong>
+                      <StatusPill value={row.status} />
+                      <span className="muted small">{audience} · {new Date(row.startsAt).toLocaleString()}</span>
+                    </div>
+                    <div className="entity-card-actions action-row">
+                      <button className="btn btn-ghost" type="button" onClick={() => openView(row)}>View</button>
+                      <button className="btn btn-ghost" type="button" onClick={() => openEdit(row)}>Edit</button>
+                      <button className="btn btn-ghost" type="button" onClick={() => schedule.mutate(row.id)} disabled={schedule.isPending}>
+                        {row.joinUrl ? 'Refresh room' : 'Request room'}
+                      </button>
+                      {row.status !== 'cancelled' ? (
+                        <button
+                          className="btn btn-danger-ghost"
+                          type="button"
+                          onClick={() => { if (window.confirm(`Cancel "${row.title}"?`)) cancel.mutate(row.id); }}
+                        >
+                          Cancel
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : viewMode === 'compact' ? (
+          <div className="panel">
+            <ul className="entity-compact-list">
               {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="muted">
-                    No rows match filters.
-                  </td>
-                </tr>
+                <li className="muted">No rows match filters.</li>
               ) : (
                 filtered.map((row) => {
                   const customCount = parseIds(row.audienceLearnerIdsJson).length;
-                  const audience =
-                    row.batch?.name ??
-                    (customCount ? `${customCount} students` : '—');
+                  const audience = row.batch?.name ?? (customCount ? `${customCount} students` : '—');
                   return (
-                    <tr key={row.id}>
-                      <td>{row.title}</td>
-                      <td>{audience}</td>
-                      <td>{new Date(row.startsAt).toLocaleString()}</td>
-                      <td>{row.provider}</td>
-                      <td>
+                    <li key={row.id}>
+                      <div className="entity-compact-main">
+                        <strong>{row.title}</strong>
+                        <span className="muted small">{audience} · {new Date(row.startsAt).toLocaleString()}</span>
                         <StatusPill value={row.status} />
-                      </td>
-                      <td>
-                        {row.joinUrl ? (
-                          <a href={row.joinUrl} target="_blank" rel="noreferrer">
-                            Open
-                          </a>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="action-row">
-                        <button
-                          className="btn btn-ghost"
-                          type="button"
-                          onClick={() => openView(row)}
-                        >
-                          View
-                        </button>
-                        <button
-                          className="btn btn-ghost"
-                          type="button"
-                          onClick={() => openEdit(row)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="btn btn-ghost"
-                          type="button"
-                          onClick={() => schedule.mutate(row.id)}
-                          disabled={schedule.isPending}
-                        >
-                          {row.joinUrl ? 'Refresh room' : 'Request room'}
-                        </button>
-                      </td>
-                    </tr>
+                      </div>
+                      <div className="entity-card-actions action-row">
+                        <button className="btn btn-ghost" type="button" onClick={() => openView(row)}>View</button>
+                        <button className="btn btn-ghost" type="button" onClick={() => openEdit(row)}>Edit</button>
+                        {row.status !== 'cancelled' ? (
+                          <button
+                            className="btn btn-danger-ghost"
+                            type="button"
+                            onClick={() => { if (window.confirm(`Cancel "${row.title}"?`)) cancel.mutate(row.id); }}
+                          >
+                            Cancel
+                          </button>
+                        ) : null}
+                      </div>
+                    </li>
                   );
                 })
               )}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </div>
+        ) : (
+          <div className="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Audience</th>
+                  <th>Starts</th>
+                  <th>Provider</th>
+                  <th>Status</th>
+                  <th>Join</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="muted">
+                      No rows match filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((row) => {
+                    const customCount = parseIds(row.audienceLearnerIdsJson).length;
+                    const audience =
+                      row.batch?.name ??
+                      (customCount ? `${customCount} students` : '—');
+                    return (
+                      <tr key={row.id}>
+                        <td>{row.title}</td>
+                        <td>{audience}</td>
+                        <td>{new Date(row.startsAt).toLocaleString()}</td>
+                        <td>{row.provider}</td>
+                        <td>
+                          <StatusPill value={row.status} />
+                        </td>
+                        <td>
+                          {row.joinUrl ? (
+                            <a href={row.joinUrl} target="_blank" rel="noreferrer">
+                              Open
+                            </a>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="action-row">
+                          <button className="btn btn-ghost" type="button" onClick={() => openView(row)}>View</button>
+                          <button className="btn btn-ghost" type="button" onClick={() => openEdit(row)}>Edit</button>
+                          <button
+                            className="btn btn-ghost"
+                            type="button"
+                            onClick={() => schedule.mutate(row.id)}
+                            disabled={schedule.isPending}
+                          >
+                            {row.joinUrl ? 'Refresh room' : 'Request room'}
+                          </button>
+                          {row.status !== 'cancelled' ? (
+                            <button
+                              className="btn btn-danger-ghost"
+                              type="button"
+                              onClick={() => { if (window.confirm(`Cancel "${row.title}"?`)) cancel.mutate(row.id); }}
+                            >
+                              Cancel
+                            </button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </PageState>
 
       <ContentDrawer

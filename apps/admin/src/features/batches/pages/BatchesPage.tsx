@@ -8,7 +8,9 @@ import {
   filterBySearch,
   filterWhen,
 } from '../../../shared/lib/tableFilters';
+import { usePersistedViewMode } from '../../../shared/lib/usePersistedViewMode';
 import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
+import { LayoutViewToggle } from '../../../shared/ui/LayoutViewToggle';
 import { PageHeaderActions } from '../../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
 import {
@@ -70,6 +72,7 @@ export function BatchesPage() {
   const [status, setStatus] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [viewMode, setViewMode] = usePersistedViewMode('admin.batches.view');
 
   const list = useQuery({
     queryKey: ['batches'],
@@ -164,6 +167,14 @@ export function BatchesPage() {
     },
   });
 
+  const deleteBatch = useMutation({
+    mutationFn: (id: string) => apiFetch(`/admin/batches/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['batches'] });
+      queryClient.invalidateQueries({ queryKey: ['learners'] });
+    },
+  });
+
   useEffect(() => {
     if (!editingId || detail.data?.id !== editingId) return;
     setSelectedLearnerIds(
@@ -193,6 +204,38 @@ export function BatchesPage() {
         ? update.error
         : null;
 
+  const handleDelete = (batch: Batch) => {
+    if (
+      window.confirm(
+        `Permanently delete batch "${batch.name}"?\n\nThis removes the batch and all its member assignments. This action cannot be undone.`,
+      )
+    ) {
+      deleteBatch.mutate(batch.id);
+    }
+  };
+
+  const renderActions = (batch: Batch) => (
+    <>
+      {hasPermission('enrollments.create') ? (
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => openEdit(batch)}
+        >
+          Edit roster
+        </button>
+      ) : null}
+      <button
+        type="button"
+        className="btn btn-danger-ghost"
+        disabled={deleteBatch.isPending}
+        onClick={() => handleDelete(batch)}
+      >
+        Delete
+      </button>
+    </>
+  );
+
   return (
     <section>
       <div className="page-header">
@@ -200,14 +243,19 @@ export function BatchesPage() {
           <h1>Batches</h1>
           <p>Create cohorts and pick specific students for each batch</p>
         </div>
-        {hasPermission('enrollments.create') ? (
-          <PageHeaderActions>
+        <PageHeaderActions>
+          <LayoutViewToggle value={viewMode} onChange={setViewMode} />
+          {hasPermission('enrollments.create') ? (
             <button type="button" className="btn" onClick={openCreate}>
               Add batch
             </button>
-          </PageHeaderActions>
-        ) : null}
+          ) : null}
+        </PageHeaderActions>
       </div>
+
+      {deleteBatch.error instanceof Error ? (
+        <p className="error">{deleteBatch.error.message}</p>
+      ) : null}
 
       <PageState
         loading={list.isLoading}
@@ -239,52 +287,91 @@ export function BatchesPage() {
             setDateTo('');
           }}
         />
-        <div className="panel">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Subject</th>
-                <th>Students</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+        {viewMode === 'grid' ? (
+          <div className="entity-grid">
+            {filtered.length === 0 ? (
+              <p className="muted">No rows match filters.</p>
+            ) : (
+              filtered.map((batch) => (
+                <div key={batch.id} className="entity-card">
+                  <div className="entity-card-cover-empty" />
+                  <div className="entity-card-meta">
+                    <strong>{batch.name}</strong>
+                    <StatusPill value={batch.status} />
+                    <span className="muted small">
+                      {batch.subject ?? 'No subject'} · {batch._count?.memberships ?? batch._count?.learners ?? 0} students
+                    </span>
+                  </div>
+                  <div className="entity-card-actions action-row">
+                    {renderActions(batch)}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : viewMode === 'compact' ? (
+          <div className="panel">
+            <ul className="entity-compact-list">
               {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="muted">
-                    No rows match filters.
-                  </td>
-                </tr>
+                <li className="muted">No rows match filters.</li>
               ) : (
                 filtered.map((batch) => (
-                  <tr key={batch.id}>
-                    <td>{batch.name}</td>
-                    <td>{batch.subject ?? '—'}</td>
-                    <td>
-                      {batch._count?.memberships ?? batch._count?.learners ?? 0}
-                    </td>
-                    <td>
+                  <li key={batch.id}>
+                    <div className="entity-compact-main">
+                      <strong>{batch.name}</strong>
+                      <span className="muted small">
+                        {batch.subject ?? '—'} · {batch._count?.memberships ?? batch._count?.learners ?? 0} students
+                      </span>
                       <StatusPill value={batch.status} />
-                    </td>
-                    <td>
-                      {hasPermission('enrollments.create') ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => openEdit(batch)}
-                        >
-                          Edit roster
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
+                    </div>
+                    <div className="entity-card-actions action-row">
+                      {renderActions(batch)}
+                    </div>
+                  </li>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </div>
+        ) : (
+          <div className="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Subject</th>
+                  <th>Students</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      No rows match filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((batch) => (
+                    <tr key={batch.id}>
+                      <td>{batch.name}</td>
+                      <td>{batch.subject ?? '—'}</td>
+                      <td>
+                        {batch._count?.memberships ?? batch._count?.learners ?? 0}
+                      </td>
+                      <td>
+                        <StatusPill value={batch.status} />
+                      </td>
+                      <td className="action-row">
+                        {renderActions(batch)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </PageState>
 
       <ContentDrawer

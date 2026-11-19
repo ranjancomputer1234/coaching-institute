@@ -82,6 +82,12 @@ export class PlatformController {
     return this.platform.publishEditorial(id, user);
   }
 
+  @Post('editorial/:id/archive')
+  @RequirePermissions('content.archive')
+  archiveEditorial(@Param('id') id: string, @CurrentUser() user: Actor) {
+    return this.platform.archiveEditorial(id, user);
+  }
+
   @Get('content-categories')
   @RequirePermissions('content.edit')
   listContentCategories(@Query('kind') kind?: EditorialKind) {
@@ -119,6 +125,12 @@ export class PlatformController {
     return this.platform.publishContentCategory(id, user);
   }
 
+  @Post('content-categories/:id/archive')
+  @RequirePermissions('content.archive')
+  archiveContentCategory(@Param('id') id: string, @CurrentUser() user: Actor) {
+    return this.platform.archiveContentCategory(id, user);
+  }
+
   @Get('live-classes')
   @RequirePermissions('live.schedule')
   listLive() {
@@ -151,6 +163,12 @@ export class PlatformController {
   @RequirePermissions('live.schedule')
   scheduleLive(@Param('id') id: string, @CurrentUser() user: Actor) {
     return this.platform.scheduleLiveClass(id, user);
+  }
+
+  @Post('live-classes/:id/cancel')
+  @RequirePermissions('live.schedule')
+  cancelLive(@Param('id') id: string, @CurrentUser() user: Actor) {
+    return this.platform.cancelLiveClass(id, user);
   }
 
   @Get('notification-templates')
@@ -215,6 +233,12 @@ export class PlatformController {
     return this.platform.sendCampaign(id, user);
   }
 
+  @Post('notifications/:id/delete')
+  @RequirePermissions('notifications.send_single')
+  deleteCampaign(@Param('id') id: string, @CurrentUser() user: Actor) {
+    return this.platform.deleteCampaign(id, user);
+  }
+
   @Get('products')
   @RequirePermissions('payments.read')
   listProducts() {
@@ -241,6 +265,12 @@ export class PlatformController {
     @CurrentUser() user: Actor,
   ) {
     return this.platform.updateProduct(id, dto, user);
+  }
+
+  @Post('products/:id/archive')
+  @RequirePermissions('payments.read')
+  archiveProduct(@Param('id') id: string, @CurrentUser() user: Actor) {
+    return this.platform.archiveProduct(id, user);
   }
 
   @Get('coupons')

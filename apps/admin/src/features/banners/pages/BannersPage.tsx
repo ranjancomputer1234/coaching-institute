@@ -7,7 +7,10 @@ import {
   filterBySearch,
   filterWhen,
 } from '../../../shared/lib/tableFilters';
+import { confirmDelete } from '../../../shared/lib/confirmDelete';
+import { usePersistedViewMode } from '../../../shared/lib/usePersistedViewMode';
 import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
+import { LayoutViewToggle } from '../../../shared/ui/LayoutViewToggle';
 import { PageHeaderActions } from '../../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
 import { TableFilterBar } from '../../../shared/ui/TableFilterBar';
@@ -95,6 +98,7 @@ export function BannersPage() {
   const [search, setSearch] = useState('');
   const [lifecycle, setLifecycle] = useState('');
   const [placement, setPlacement] = useState('');
+  const [viewMode, setViewMode] = usePersistedViewMode('admin.banners.view');
 
   const list = useQuery({
     queryKey: ['banners'],
@@ -228,6 +232,12 @@ export function BannersPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['banners'] }),
   });
 
+  const archive = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/banners/${id}/archive`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['banners'] }),
+  });
+
   const rows = list.data ?? [];
   const filtered = useMemo(() => {
     let next = rows;
@@ -270,13 +280,14 @@ export function BannersPage() {
           <h1>Home banners</h1>
           <p>The phone shows the image only. Words and the button belong inside the picture.</p>
         </div>
-        {canManage ? (
-          <PageHeaderActions>
+        <PageHeaderActions>
+          <LayoutViewToggle value={viewMode} onChange={setViewMode} />
+          {canManage ? (
             <button type="button" className="btn" onClick={openCreate}>
               Add banner
             </button>
-          </PageHeaderActions>
-        ) : null}
+          ) : null}
+        </PageHeaderActions>
       </div>
 
       <PageState
@@ -316,90 +327,158 @@ export function BannersPage() {
         {publish.error instanceof Error ? (
           <p className="error">{publish.error.message}</p>
         ) : null}
-        <div className="panel">
-          <table>
-            <thead>
-              <tr>
-                <th>Image</th>
-                <th>Campaign</th>
-                <th>Title</th>
-                <th>Placement</th>
-                <th>Priority</th>
-                <th>Opens</th>
-                <th>State</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="muted">
-                    No rows match filters.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((banner) => (
-                  <tr key={banner.id}>
-                    <td>
-                      {banner.imageUrl ? (
-                        <img className="banner-thumb" src={banner.imageUrl} alt="" />
-                      ) : (
-                        <span className="muted">No image</span>
-                      )}
-                    </td>
-                    <td>{banner.campaignName}</td>
-                    <td>{banner.title}</td>
-                    <td>{banner.placement}</td>
-                    <td>{banner.priority}</td>
-                    <td>
-                      {banner.targetKind}:{banner.targetRef}
-                    </td>
-                    <td>
-                      <StatusPill value={banner.lifecycle} />
-                    </td>
-                    <td className="action-row">
+        {viewMode === 'grid' ? (
+          <div className="entity-grid">
+            {filtered.length === 0 ? (
+              <p className="muted">No rows match filters.</p>
+            ) : (
+              filtered.map((banner) => (
+                <div key={banner.id} className="entity-card">
+                  {banner.imageUrl ? (
+                    <img className="entity-card-cover" src={banner.imageUrl} alt="" />
+                  ) : (
+                    <div className="entity-card-cover-empty" />
+                  )}
+                  <div className="entity-card-meta">
+                    <strong>{banner.campaignName}</strong>
+                    <StatusPill value={banner.lifecycle} />
+                    <span className="muted small">{banner.title} · priority {banner.priority}</span>
+                  </div>
+                  <div className="entity-card-actions action-row">
+                    <button type="button" className="btn btn-ghost" onClick={() => openView(banner)}>View</button>
+                    {canManage ? <button type="button" className="btn btn-ghost" onClick={() => openEdit(banner)}>Edit</button> : null}
+                    {banner.lifecycle === 'published' ? (
+                      <button type="button" className="btn btn-ghost" onClick={() => pause.mutate(banner.id)}>Pause</button>
+                    ) : (
+                      <button type="button" className="btn" disabled={!banner.imageUrl} onClick={() => publish.mutate(banner.id)}>Publish</button>
+                    )}
+                    {canManage && banner.lifecycle !== 'archived' ? (
                       <button
                         type="button"
-                        className="btn btn-ghost"
-                        onClick={() => openView(banner)}
+                        className="btn btn-danger-ghost"
+                        onClick={() => { if (confirmDelete(banner.campaignName)) archive.mutate(banner.id); }}
                       >
-                        View
+                        Delete
                       </button>
-                      {canManage ? (
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : viewMode === 'compact' ? (
+          <div className="panel">
+            <ul className="entity-compact-list">
+              {filtered.length === 0 ? (
+                <li className="muted">No rows match filters.</li>
+              ) : (
+                filtered.map((banner) => (
+                  <li key={banner.id}>
+                    <div className="entity-compact-main">
+                      <strong>{banner.campaignName}</strong>
+                      <span className="muted small">{banner.title} · p{banner.priority} · {banner.placement}</span>
+                      <StatusPill value={banner.lifecycle} />
+                    </div>
+                    <div className="entity-card-actions action-row">
+                      <button type="button" className="btn btn-ghost" onClick={() => openView(banner)}>View</button>
+                      {canManage ? <button type="button" className="btn btn-ghost" onClick={() => openEdit(banner)}>Edit</button> : null}
+                      {banner.lifecycle === 'published' ? (
+                        <button type="button" className="btn btn-ghost" onClick={() => pause.mutate(banner.id)}>Pause</button>
+                      ) : (
+                        <button type="button" className="btn" disabled={!banner.imageUrl} onClick={() => publish.mutate(banner.id)}>Publish</button>
+                      )}
+                      {canManage && banner.lifecycle !== 'archived' ? (
                         <button
                           type="button"
-                          className="btn btn-ghost"
-                          onClick={() => openEdit(banner)}
+                          className="btn btn-danger-ghost"
+                          onClick={() => { if (confirmDelete(banner.campaignName)) archive.mutate(banner.id); }}
                         >
-                          Edit
+                          Delete
                         </button>
                       ) : null}
-                      {banner.lifecycle === 'published' ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => pause.mutate(banner.id)}
-                        >
-                          Pause
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={!banner.imageUrl}
-                          title={banner.imageUrl ? 'Publish' : 'Add an image before publishing'}
-                          onClick={() => publish.mutate(banner.id)}
-                        >
-                          Publish
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                    </div>
+                  </li>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </div>
+        ) : (
+          <div className="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Image</th>
+                  <th>Campaign</th>
+                  <th>Title</th>
+                  <th>Placement</th>
+                  <th>Priority</th>
+                  <th>Opens</th>
+                  <th>State</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="muted">
+                      No rows match filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((banner) => (
+                    <tr key={banner.id}>
+                      <td>
+                        {banner.imageUrl ? (
+                          <img className="banner-thumb" src={banner.imageUrl} alt="" />
+                        ) : (
+                          <span className="muted">No image</span>
+                        )}
+                      </td>
+                      <td>{banner.campaignName}</td>
+                      <td>{banner.title}</td>
+                      <td>{banner.placement}</td>
+                      <td>{banner.priority}</td>
+                      <td>
+                        {banner.targetKind}:{banner.targetRef}
+                      </td>
+                      <td>
+                        <StatusPill value={banner.lifecycle} />
+                      </td>
+                      <td className="action-row">
+                        <button type="button" className="btn btn-ghost" onClick={() => openView(banner)}>View</button>
+                        {canManage ? (
+                          <button type="button" className="btn btn-ghost" onClick={() => openEdit(banner)}>Edit</button>
+                        ) : null}
+                        {banner.lifecycle === 'published' ? (
+                          <button type="button" className="btn btn-ghost" onClick={() => pause.mutate(banner.id)}>Pause</button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={!banner.imageUrl}
+                            title={banner.imageUrl ? 'Publish' : 'Add an image before publishing'}
+                            onClick={() => publish.mutate(banner.id)}
+                          >
+                            Publish
+                          </button>
+                        )}
+                        {canManage && banner.lifecycle !== 'archived' ? (
+                          <button
+                            type="button"
+                            className="btn btn-danger-ghost"
+                            onClick={() => { if (confirmDelete(banner.campaignName)) archive.mutate(banner.id); }}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </PageState>
 
       <ContentDrawer

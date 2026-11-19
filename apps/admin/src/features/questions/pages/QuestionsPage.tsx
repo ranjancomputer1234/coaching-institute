@@ -7,7 +7,10 @@ import {
   filterBySearch,
   filterWhen,
 } from '../../../shared/lib/tableFilters';
+import { confirmDelete } from '../../../shared/lib/confirmDelete';
+import { usePersistedViewMode } from '../../../shared/lib/usePersistedViewMode';
 import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
+import { LayoutViewToggle } from '../../../shared/ui/LayoutViewToggle';
 import { PageHeaderActions } from '../../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
 import { TableFilterBar } from '../../../shared/ui/TableFilterBar';
@@ -40,6 +43,7 @@ export function QuestionsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [subject, setSubject] = useState('');
+  const [viewMode, setViewMode] = usePersistedViewMode('admin.questions.view');
 
   const list = useQuery({
     queryKey: ['questions'],
@@ -125,6 +129,12 @@ export function QuestionsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['questions'] }),
   });
 
+  const retire = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/questions/${id}/retire`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['questions'] }),
+  });
+
   const rows = list.data ?? [];
   const filtered = useMemo(() => {
     let next = rows;
@@ -147,6 +157,33 @@ export function QuestionsPage() {
   const drawerTitle =
     mode === 'view' ? 'View question' : mode === 'edit' ? 'Edit question' : 'Add question';
 
+  const renderActions = (q: Question) => (
+    <>
+      <button type="button" className="btn btn-ghost" onClick={() => openView(q)}>
+        View
+      </button>
+      {canAuthor ? (
+        <button type="button" className="btn btn-ghost" onClick={() => openEdit(q)}>
+          Edit
+        </button>
+      ) : null}
+      {hasPermission('assessments.publish') && q.status !== 'approved' ? (
+        <button type="button" className="btn" onClick={() => approve.mutate(q.id)}>
+          Approve
+        </button>
+      ) : null}
+      {canAuthor && q.status !== 'retired' ? (
+        <button
+          type="button"
+          className="btn btn-danger-ghost"
+          onClick={() => { if (confirmDelete(q.prompt.slice(0, 60))) retire.mutate(q.id); }}
+        >
+          Delete
+        </button>
+      ) : null}
+    </>
+  );
+
   return (
     <section>
       <div className="page-header">
@@ -154,13 +191,14 @@ export function QuestionsPage() {
           <h1>Question bank</h1>
           <p>Single-choice questions (mobile-compatible)</p>
         </div>
-        {canAuthor ? (
-          <PageHeaderActions>
+        <PageHeaderActions>
+          <LayoutViewToggle value={viewMode} onChange={setViewMode} />
+          {canAuthor ? (
             <button type="button" className="btn" onClick={openCreate}>
               Add question
             </button>
-          </PageHeaderActions>
-        ) : null}
+          ) : null}
+        </PageHeaderActions>
       </div>
 
       <PageState
@@ -197,74 +235,92 @@ export function QuestionsPage() {
             setSubject('');
           }}
         />
-        <div className="panel">
-          <table>
-            <thead>
-              <tr>
-                <th>Prompt</th>
-                <th>Marks</th>
-                <th>Status</th>
-                <th>Options</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        {viewMode === 'grid' ? (
+          <div className="entity-grid">
+            {filtered.length === 0 ? (
+              <p className="muted">No rows match filters.</p>
+            ) : (
+              filtered.map((q) => (
+                <div key={q.id} className="entity-card">
+                  <div className="entity-card-cover-empty" />
+                  <div className="entity-card-meta">
+                    <strong>{q.prompt.length > 80 ? `${q.prompt.slice(0, 80)}…` : q.prompt}</strong>
+                    <StatusPill value={q.status} />
+                    <span className="muted small">{q.marks} mark{q.marks !== 1 ? 's' : ''} · {q.options.length} options</span>
+                  </div>
+                  <div className="entity-card-actions action-row">
+                    {renderActions(q)}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : viewMode === 'compact' ? (
+          <div className="panel">
+            <ul className="entity-compact-list">
               {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="muted">
-                    No rows match filters.
-                  </td>
-                </tr>
+                <li className="muted">No rows match filters.</li>
               ) : (
                 filtered.map((q) => (
-                  <tr key={q.id}>
-                    <td>{q.prompt}</td>
-                    <td>{q.marks}</td>
-                    <td>
+                  <li key={q.id}>
+                    <div className="entity-compact-main">
+                      <strong>{q.prompt.length > 80 ? `${q.prompt.slice(0, 80)}…` : q.prompt}</strong>
+                      <span className="muted small">{q.marks} mark{q.marks !== 1 ? 's' : ''} · {q.subject ?? 'No subject'}</span>
                       <StatusPill value={q.status} />
-                    </td>
-                    <td className="muted">
-                      {q.options.map((o) => (
-                        <div key={o.id}>
-                          {o.isCorrect ? '✓ ' : ''}
-                          {o.label}
-                        </div>
-                      ))}
-                    </td>
-                    <td className="action-row">
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => openView(q)}
-                      >
-                        View
-                      </button>
-                      {canAuthor ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => openEdit(q)}
-                        >
-                          Edit
-                        </button>
-                      ) : null}
-                      {hasPermission('assessments.publish') &&
-                      q.status !== 'approved' ? (
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => approve.mutate(q.id)}
-                        >
-                          Approve
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
+                    </div>
+                    <div className="entity-card-actions action-row">
+                      {renderActions(q)}
+                    </div>
+                  </li>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </div>
+        ) : (
+          <div className="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Prompt</th>
+                  <th>Marks</th>
+                  <th>Status</th>
+                  <th>Options</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      No rows match filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((q) => (
+                    <tr key={q.id}>
+                      <td>{q.prompt}</td>
+                      <td>{q.marks}</td>
+                      <td>
+                        <StatusPill value={q.status} />
+                      </td>
+                      <td className="muted">
+                        {q.options.map((o) => (
+                          <div key={o.id}>
+                            {o.isCorrect ? '✓ ' : ''}
+                            {o.label}
+                          </div>
+                        ))}
+                      </td>
+                      <td className="action-row">
+                        {renderActions(q)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </PageState>
 
       <ContentDrawer open={drawerOpen} onClose={closeDrawer} title={drawerTitle} size="full">

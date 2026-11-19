@@ -7,7 +7,9 @@ import {
   filterBySearch,
   filterWhen,
 } from '../../../shared/lib/tableFilters';
+import { usePersistedViewMode } from '../../../shared/lib/usePersistedViewMode';
 import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
+import { LayoutViewToggle } from '../../../shared/ui/LayoutViewToggle';
 import { PageHeaderActions } from '../../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
 import { TableFilterBar } from '../../../shared/ui/TableFilterBar';
@@ -53,6 +55,7 @@ export function NotificationsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [audienceFilter, setAudienceFilter] = useState('');
+  const [viewMode, setViewMode] = usePersistedViewMode('admin.notifications.view');
 
   const list = useQuery({
     queryKey: ['notifications'],
@@ -162,6 +165,12 @@ export function NotificationsPage() {
     },
   });
 
+  const deleteNotification = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/notifications/${id}/delete`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
   const rows = list.data ?? [];
   const filtered = useMemo(() => {
     let next = rows;
@@ -197,6 +206,7 @@ export function NotificationsPage() {
           <p>Send delivers to each learner's in-app inbox. Push delivery needs a configured provider.</p>
         </div>
         <PageHeaderActions>
+          <LayoutViewToggle value={viewMode} onChange={setViewMode} />
           <button type="button" className="btn" onClick={openCreate}>
             New campaign
           </button>
@@ -236,72 +246,128 @@ export function NotificationsPage() {
             setAudienceFilter('');
           }}
         />
-        <div className="panel">
-          <table>
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Audience</th>
-                <th>Category</th>
-                <th>Status</th>
-                <th>Recipients</th>
-                <th>Provider</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        {viewMode === 'grid' ? (
+          <div className="entity-grid">
+            {filtered.length === 0 ? (
+              <p className="muted">No rows match filters.</p>
+            ) : (
+              filtered.map((row) => (
+                <div key={row.id} className="entity-card">
+                  <div className="entity-card-cover-empty" />
+                  <div className="entity-card-meta">
+                    <strong>{row.title}</strong>
+                    <StatusPill value={row.status} />
+                    <span className="muted small">{row.audience} · {row.category ?? 'system'} · {row.recipientCount ?? 0} recipients</span>
+                  </div>
+                  <div className="entity-card-actions action-row">
+                    <button className="btn btn-ghost" type="button" onClick={() => openView(row)}>View</button>
+                    {row.status === 'draft' ? <button className="btn btn-ghost" type="button" onClick={() => openEdit(row)}>Edit</button> : null}
+                    {canSend ? <button className="btn btn-ghost" type="button" onClick={() => send.mutate(row.id)}>Send</button> : null}
+                    {row.status === 'draft' ? (
+                      <button
+                        className="btn btn-danger-ghost"
+                        type="button"
+                        onClick={() => { if (window.confirm(`Delete draft "${row.title}"?`)) deleteNotification.mutate(row.id); }}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : viewMode === 'compact' ? (
+          <div className="panel">
+            <ul className="entity-compact-list">
               {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="muted">
-                    No rows match filters.
-                  </td>
-                </tr>
+                <li className="muted">No rows match filters.</li>
               ) : (
                 filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.title}</td>
-                    <td>{row.audience}</td>
-                    <td>{row.category ?? 'system'}</td>
-                    <td>
+                  <li key={row.id}>
+                    <div className="entity-compact-main">
+                      <strong>{row.title}</strong>
+                      <span className="muted small">{row.audience} · {row.category ?? 'system'}</span>
                       <StatusPill value={row.status} />
-                    </td>
-                    <td>{row.recipientCount ?? 0}</td>
-                    <td>{row.providerStatus}</td>
-                    <td className="action-row">
-                      <button
-                        className="btn btn-ghost"
-                        type="button"
-                        onClick={() => openView(row)}
-                      >
-                        View
-                      </button>
+                    </div>
+                    <div className="entity-card-actions action-row">
+                      <button className="btn btn-ghost" type="button" onClick={() => openView(row)}>View</button>
+                      {row.status === 'draft' ? <button className="btn btn-ghost" type="button" onClick={() => openEdit(row)}>Edit</button> : null}
+                      {canSend ? <button className="btn btn-ghost" type="button" onClick={() => send.mutate(row.id)}>Send</button> : null}
                       {row.status === 'draft' ? (
                         <button
-                          className="btn btn-ghost"
+                          className="btn btn-danger-ghost"
                           type="button"
-                          onClick={() => openEdit(row)}
+                          onClick={() => { if (window.confirm(`Delete draft "${row.title}"?`)) deleteNotification.mutate(row.id); }}
                         >
-                          Edit
+                          Delete
                         </button>
                       ) : null}
-                      {canSend ? (
-                        <button
-                          className="btn btn-ghost"
-                          type="button"
-                          onClick={() => send.mutate(row.id)}
-                        >
-                          Send
-                        </button>
-                      ) : (
-                        <span className="muted small">Needs send_bulk</span>
-                      )}
-                    </td>
-                  </tr>
+                    </div>
+                  </li>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </div>
+        ) : (
+          <div className="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Audience</th>
+                  <th>Category</th>
+                  <th>Status</th>
+                  <th>Recipients</th>
+                  <th>Provider</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="muted">
+                      No rows match filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.title}</td>
+                      <td>{row.audience}</td>
+                      <td>{row.category ?? 'system'}</td>
+                      <td>
+                        <StatusPill value={row.status} />
+                      </td>
+                      <td>{row.recipientCount ?? 0}</td>
+                      <td>{row.providerStatus}</td>
+                      <td className="action-row">
+                        <button className="btn btn-ghost" type="button" onClick={() => openView(row)}>View</button>
+                        {row.status === 'draft' ? (
+                          <button className="btn btn-ghost" type="button" onClick={() => openEdit(row)}>Edit</button>
+                        ) : null}
+                        {canSend ? (
+                          <button className="btn btn-ghost" type="button" onClick={() => send.mutate(row.id)}>Send</button>
+                        ) : (
+                          <span className="muted small">Needs send_bulk</span>
+                        )}
+                        {row.status === 'draft' ? (
+                          <button
+                            className="btn btn-danger-ghost"
+                            type="button"
+                            onClick={() => { if (window.confirm(`Delete draft "${row.title}"?`)) deleteNotification.mutate(row.id); }}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </PageState>
       {send.error instanceof Error ? <p className="error">{send.error.message}</p> : null}
       {sendNote ? <p className="muted small">{sendNote}</p> : null}

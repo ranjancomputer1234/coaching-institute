@@ -7,7 +7,9 @@ import {
   filterBySearch,
   filterWhen,
 } from '../../shared/lib/tableFilters';
+import { usePersistedViewMode } from '../../shared/lib/usePersistedViewMode';
 import { ContentDrawer } from '../../shared/ui/ContentDrawer';
+import { LayoutViewToggle } from '../../shared/ui/LayoutViewToggle';
 import { PageHeaderActions } from '../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../shared/ui/PageState';
 import { TableFilterBar } from '../../shared/ui/TableFilterBar';
@@ -30,6 +32,13 @@ type DrawerMode = 'create' | 'view' | 'edit';
 /** Identifier fields that should be read-only on edit */
 const IDENTIFIER_FIELDS = new Set(['key', 'sku', 'code']);
 
+/** Flexible delete/archive endpoint config */
+export type DeletePathConfig = {
+  method: 'POST' | 'PATCH' | 'DELETE';
+  url: (id: string) => string;
+  body?: Record<string, unknown>;
+};
+
 type Props = {
   title: string;
   summary: string;
@@ -45,6 +54,12 @@ type Props = {
   statusFilterField?: string;
   updatePath?: (id: string) => string;
   detailPath?: (id: string) => string;
+  /** POST to this URL to archive/delete the record */
+  archivePath?: (id: string) => string;
+  /** Flexible delete config — overrides archivePath when provided */
+  deletePath?: DeletePathConfig;
+  /** Return true to hide the Delete button for a given row */
+  deleteDisabled?: (row: Record<string, unknown>) => boolean;
 };
 
 function toLocalInput(iso: string) {
@@ -85,6 +100,9 @@ export function RecordScreen({
   statusFilterField,
   updatePath,
   detailPath,
+  archivePath,
+  deletePath,
+  deleteDisabled,
 }: Props) {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -98,10 +116,14 @@ export function RecordScreen({
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [viewMode, setViewMode] = usePersistedViewMode(`admin.${queryKey}.view`);
 
   const canCreate = Boolean(createPath) && (!permission || hasPermission(permission));
   const canEdit = Boolean(updatePath) && (!permission || hasPermission(permission));
   const hasActions = canEdit || Boolean(detailPath);
+
+  // Determine whether a delete action is available
+  const hasDelete = Boolean(archivePath) || Boolean(deletePath);
 
   const list = useQuery({
     queryKey: [queryKey],
@@ -154,6 +176,20 @@ export function RecordScreen({
       setDrawerOpen(false);
       queryClient.invalidateQueries({ queryKey: [queryKey] });
     },
+  });
+
+  const deleteRecord = useMutation({
+    mutationFn: (id: string) => {
+      if (deletePath) {
+        return apiFetch(deletePath.url(id), {
+          method: deletePath.method,
+          ...(deletePath.body ? { body: JSON.stringify(deletePath.body) } : {}),
+        });
+      }
+      // Fall back to archivePath (POST)
+      return apiFetch(archivePath!(id), { method: 'POST' });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [queryKey] }),
   });
 
   const openCreate = () => {
@@ -224,7 +260,7 @@ export function RecordScreen({
   }, [rows, statusFilterField]);
 
   const readOnly = mode === 'view';
-  const totalCols = columns.length + (hasActions ? 1 : 0);
+  const totalCols = columns.length + ((hasActions || hasDelete) ? 1 : 0);
 
   const saveError = mode === 'edit' ? update.error : create.error;
   const drawerTitle =
@@ -233,6 +269,49 @@ export function RecordScreen({
       : mode === 'edit'
         ? `Edit ${title}`
         : createLabel;
+
+  // Title for grid/compact: use first column value
+  const getRowTitle = (row: Record<string, unknown>) => columns[0]?.value(row) ?? String(row.id ?? '');
+  const getRowMeta = (row: Record<string, unknown>) =>
+    columns
+      .slice(1)
+      .map((c) => c.value(row))
+      .filter(Boolean)
+      .join(' · ');
+  const getRowStatus = (row: Record<string, unknown>) =>
+    statusKey ? columns.find((c) => c.header === statusKey)?.value(row) : null;
+
+  const handleDelete = (row: Record<string, unknown>) => {
+    const label = getRowTitle(row);
+    if (window.confirm(`Delete "${label}"? This action cannot be undone.`)) {
+      deleteRecord.mutate(String(row.id ?? ''));
+    }
+  };
+
+  const renderRowActions = (row: Record<string, unknown>) => (
+    <>
+      {(hasActions || detailPath) && (
+        <button type="button" className="btn btn-ghost" onClick={() => openView(row)}>
+          View
+        </button>
+      )}
+      {canEdit ? (
+        <button type="button" className="btn btn-ghost" onClick={() => openEdit(row)}>
+          Edit
+        </button>
+      ) : null}
+      {hasDelete && !(deleteDisabled?.(row)) ? (
+        <button
+          type="button"
+          className="btn btn-danger-ghost"
+          disabled={deleteRecord.isPending}
+          onClick={() => handleDelete(row)}
+        >
+          Delete
+        </button>
+      ) : null}
+    </>
+  );
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -248,13 +327,14 @@ export function RecordScreen({
           <h1>{title}</h1>
           <p>{summary}</p>
         </div>
-        {canCreate ? (
-          <PageHeaderActions>
+        <PageHeaderActions>
+          <LayoutViewToggle value={viewMode} onChange={setViewMode} />
+          {canCreate ? (
             <button type="button" className="btn" onClick={openCreate}>
               {createLabel}
             </button>
-          </PageHeaderActions>
-        ) : null}
+          ) : null}
+        </PageHeaderActions>
       </div>
 
       <PageState
@@ -298,61 +378,95 @@ export function RecordScreen({
             setStatusFilter('');
           }}
         />
-        <div className="panel">
-          <table>
-            <thead>
-              <tr>
-                {columns.map((column) => (
-                  <th key={column.header}>{column.header}</th>
-                ))}
-                {hasActions ? <th>Actions</th> : null}
-              </tr>
-            </thead>
-            <tbody>
+        {viewMode === 'grid' ? (
+          <div className="entity-grid">
+            {filteredRows.length === 0 ? (
+              <p className="muted">No rows match the current filters.</p>
+            ) : (
+              filteredRows.map((row) => {
+                const rowStatus = getRowStatus(row);
+                return (
+                  <div key={String(row.id)} className="entity-card">
+                    <div className="entity-card-cover-empty" />
+                    <div className="entity-card-meta">
+                      <strong>{getRowTitle(row)}</strong>
+                      {rowStatus ? <StatusPill value={rowStatus} /> : null}
+                      <span className="muted small">{getRowMeta(row)}</span>
+                    </div>
+                    <div className="entity-card-actions action-row">
+                      {renderRowActions(row)}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : viewMode === 'compact' ? (
+          <div className="panel">
+            <ul className="entity-compact-list">
               {filteredRows.length === 0 ? (
-                <tr>
-                  <td colSpan={totalCols} className="muted">
-                    No rows match the current filters.
-                  </td>
-                </tr>
+                <li className="muted">No rows match the current filters.</li>
               ) : (
-                filteredRows.map((row) => (
-                  <tr key={String(row.id)}>
-                    {columns.map((column) => (
-                      <td key={column.header}>
-                        {statusKey && column.header === statusKey ? (
-                          <StatusPill value={column.value(row)} />
-                        ) : (
-                          column.value(row)
-                        )}
-                      </td>
-                    ))}
-                    {hasActions ? (
-                      <td className="action-row">
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => openView(row)}
-                        >
-                          View
-                        </button>
-                        {canEdit ? (
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            onClick={() => openEdit(row)}
-                          >
-                            Edit
-                          </button>
-                        ) : null}
-                      </td>
-                    ) : null}
-                  </tr>
-                ))
+                filteredRows.map((row) => {
+                  const rowStatus = getRowStatus(row);
+                  return (
+                    <li key={String(row.id)}>
+                      <div className="entity-compact-main">
+                        <strong>{getRowTitle(row)}</strong>
+                        <span className="muted small">{getRowMeta(row)}</span>
+                        {rowStatus ? <StatusPill value={rowStatus} /> : null}
+                      </div>
+                      <div className="entity-card-actions action-row">
+                        {renderRowActions(row)}
+                      </div>
+                    </li>
+                  );
+                })
               )}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </div>
+        ) : (
+          <div className="panel">
+            <table>
+              <thead>
+                <tr>
+                  {columns.map((column) => (
+                    <th key={column.header}>{column.header}</th>
+                  ))}
+                  {(hasActions || hasDelete) ? <th>Actions</th> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={totalCols} className="muted">
+                      No rows match the current filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRows.map((row) => (
+                    <tr key={String(row.id)}>
+                      {columns.map((column) => (
+                        <td key={column.header}>
+                          {statusKey && column.header === statusKey ? (
+                            <StatusPill value={column.value(row)} />
+                          ) : (
+                            column.value(row)
+                          )}
+                        </td>
+                      ))}
+                      {(hasActions || hasDelete) ? (
+                        <td className="action-row">
+                          {renderRowActions(row)}
+                        </td>
+                      ) : null}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </PageState>
 
       <ContentDrawer

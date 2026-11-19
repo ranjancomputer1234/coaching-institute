@@ -7,7 +7,10 @@ import {
   filterBySearch,
   filterWhen,
 } from '../../../shared/lib/tableFilters';
+import { confirmDelete } from '../../../shared/lib/confirmDelete';
+import { usePersistedViewMode } from '../../../shared/lib/usePersistedViewMode';
 import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
+import { LayoutViewToggle } from '../../../shared/ui/LayoutViewToggle';
 import { PageHeaderActions } from '../../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
 import { TableFilterBar } from '../../../shared/ui/TableFilterBar';
@@ -153,6 +156,7 @@ export function EditorialPage({
   const [lifecycle, setLifecycle] = useState('');
   const [catFilter, setCatFilter] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = usePersistedViewMode(`admin.editorial.${kind}.view`);
 
   const [itemTitle, setItemTitle] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -463,6 +467,15 @@ export function EditorialPage({
       apiFetch(`/admin/content-categories/${id}/publish`, { method: 'POST' }),
     onSuccess: refresh,
   });
+  const archiveItem = useMutation({
+    mutationFn: (id: string) => apiFetch(`/admin/editorial/${id}/archive`, { method: 'POST' }),
+    onSuccess: refresh,
+  });
+  const archiveCategory = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/content-categories/${id}/archive`, { method: 'POST' }),
+    onSuccess: refresh,
+  });
 
   // ── Filtering ──────────────────────────────────────────────────────────────
 
@@ -517,13 +530,14 @@ export function EditorialPage({
           <h1>{title}</h1>
           <p>{summary}</p>
         </div>
-        {canCreate ? (
-          <PageHeaderActions>
-            {kind !== 'awareness' ? (
-              <button type="button" className="btn btn-ghost" onClick={openCategoryCreate}>
-                Add category
-              </button>
-            ) : null}
+        <PageHeaderActions>
+          <LayoutViewToggle value={viewMode} onChange={setViewMode} />
+          {canCreate && kind !== 'awareness' ? (
+            <button type="button" className="btn btn-ghost" onClick={openCategoryCreate}>
+              Add category
+            </button>
+          ) : null}
+          {canCreate ? (
             <button type="button" className="btn" onClick={openItemCreate}>
               {kind === 'news'
                 ? 'Add article'
@@ -533,8 +547,8 @@ export function EditorialPage({
                     ? 'Add question'
                     : 'Add topic'}
             </button>
-          </PageHeaderActions>
-        ) : null}
+          ) : null}
+        </PageHeaderActions>
       </div>
 
       {kind !== 'awareness' ? (
@@ -591,6 +605,15 @@ export function EditorialPage({
                           Publish
                         </button>
                       ) : null}
+                      {canEdit && row.lifecycle !== 'archived' ? (
+                        <button
+                          className="btn btn-danger-ghost"
+                          type="button"
+                          onClick={() => { if (confirmDelete(row.title)) archiveCategory.mutate(row.id); }}
+                        >
+                          Delete
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ))
@@ -634,66 +657,130 @@ export function EditorialPage({
             setCatFilter('');
           }}
         />
-        <div className="panel">
-          <table>
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Category</th>
-                <th>Pricing</th>
-                <th>State</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        {viewMode === 'grid' ? (
+          <div className="entity-grid">
+            {filtered.length === 0 ? (
+              <p className="muted">No rows match filters.</p>
+            ) : (
+              filtered.map((row) => (
+                <div key={row.id} className="entity-card">
+                  {row.imageUrl ? (
+                    <img className="entity-card-cover" src={row.imageUrl} alt="" />
+                  ) : (
+                    <div className="entity-card-cover-empty" />
+                  )}
+                  <div className="entity-card-meta">
+                    <strong>{row.title.length > 60 ? `${row.title.slice(0, 60)}…` : row.title}</strong>
+                    <StatusPill value={row.lifecycle} />
+                    <span className="muted small">{row.category ?? '—'} · {row.pricing}</span>
+                  </div>
+                  <div className="entity-card-actions action-row">
+                    <button className="btn btn-ghost" type="button" onClick={() => openItemView(row)}>View</button>
+                    {canEdit ? <button className="btn btn-ghost" type="button" onClick={() => openItemEdit(row)}>Edit</button> : null}
+                    {row.lifecycle !== 'published' && canPublish ? (
+                      <button className="btn btn-ghost" type="button" onClick={() => publishItem.mutate(row.id)}>Publish</button>
+                    ) : null}
+                    {canEdit && row.lifecycle !== 'archived' ? (
+                      <button
+                        className="btn btn-danger-ghost"
+                        type="button"
+                        onClick={() => { if (confirmDelete(row.title)) archiveItem.mutate(row.id); }}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : viewMode === 'compact' ? (
+          <div className="panel">
+            <ul className="entity-compact-list">
               {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="muted">
-                    No rows match filters.
-                  </td>
-                </tr>
+                <li className="muted">No rows match filters.</li>
               ) : (
                 filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.title}</td>
-                    <td>{row.category ?? '—'}</td>
-                    <td>{row.pricing}</td>
-                    <td>
+                  <li key={row.id}>
+                    <div className="entity-compact-main">
+                      <strong>{row.title.length > 70 ? `${row.title.slice(0, 70)}…` : row.title}</strong>
+                      <span className="muted small">{row.category ?? '—'} · {row.pricing}</span>
                       <StatusPill value={row.lifecycle} />
-                    </td>
-                    <td className="action-row">
-                      <button
-                        className="btn btn-ghost"
-                        type="button"
-                        onClick={() => openItemView(row)}
-                      >
-                        View
-                      </button>
-                      {canEdit ? (
-                        <button
-                          className="btn btn-ghost"
-                          type="button"
-                          onClick={() => openItemEdit(row)}
-                        >
-                          Edit
-                        </button>
-                      ) : null}
+                    </div>
+                    <div className="entity-card-actions action-row">
+                      <button className="btn btn-ghost" type="button" onClick={() => openItemView(row)}>View</button>
+                      {canEdit ? <button className="btn btn-ghost" type="button" onClick={() => openItemEdit(row)}>Edit</button> : null}
                       {row.lifecycle !== 'published' && canPublish ? (
+                        <button className="btn btn-ghost" type="button" onClick={() => publishItem.mutate(row.id)}>Publish</button>
+                      ) : null}
+                      {canEdit && row.lifecycle !== 'archived' ? (
                         <button
-                          className="btn btn-ghost"
+                          className="btn btn-danger-ghost"
                           type="button"
-                          onClick={() => publishItem.mutate(row.id)}
+                          onClick={() => { if (confirmDelete(row.title)) archiveItem.mutate(row.id); }}
                         >
-                          Publish
+                          Delete
                         </button>
                       ) : null}
-                    </td>
-                  </tr>
+                    </div>
+                  </li>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </div>
+        ) : (
+          <div className="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Category</th>
+                  <th>Pricing</th>
+                  <th>State</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      No rows match filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.title}</td>
+                      <td>{row.category ?? '—'}</td>
+                      <td>{row.pricing}</td>
+                      <td>
+                        <StatusPill value={row.lifecycle} />
+                      </td>
+                      <td className="action-row">
+                        <button className="btn btn-ghost" type="button" onClick={() => openItemView(row)}>View</button>
+                        {canEdit ? (
+                          <button className="btn btn-ghost" type="button" onClick={() => openItemEdit(row)}>Edit</button>
+                        ) : null}
+                        {row.lifecycle !== 'published' && canPublish ? (
+                          <button className="btn btn-ghost" type="button" onClick={() => publishItem.mutate(row.id)}>Publish</button>
+                        ) : null}
+                        {canEdit && row.lifecycle !== 'archived' ? (
+                          <button
+                            className="btn btn-danger-ghost"
+                            type="button"
+                            onClick={() => { if (confirmDelete(row.title)) archiveItem.mutate(row.id); }}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </PageState>
 
       {/* ── Category drawer ───────────────────────────────────────────────── */}

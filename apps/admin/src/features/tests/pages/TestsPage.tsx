@@ -7,7 +7,10 @@ import {
   filterBySearch,
   filterWhen,
 } from '../../../shared/lib/tableFilters';
+import { confirmDelete } from '../../../shared/lib/confirmDelete';
+import { usePersistedViewMode } from '../../../shared/lib/usePersistedViewMode';
 import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
+import { LayoutViewToggle } from '../../../shared/ui/LayoutViewToggle';
 import { PageHeaderActions } from '../../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
 import { TableFilterBar } from '../../../shared/ui/TableFilterBar';
@@ -52,6 +55,7 @@ export function TestsPage() {
   const [search, setSearch] = useState('');
   const [lifecycle, setLifecycle] = useState('');
   const [mode, setMode] = useState('');
+  const [viewMode, setViewMode] = usePersistedViewMode('admin.tests.view');
 
   const tests = useQuery({
     queryKey: ['tests'],
@@ -182,6 +186,12 @@ export function TestsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tests'] }),
   });
 
+  const archive = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/admin/tests/${id}/archive`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tests'] }),
+  });
+
   const rows = tests.data ?? [];
   const filtered = useMemo(() => {
     let next = rows;
@@ -214,13 +224,14 @@ export function TestsPage() {
           <h1>Tests</h1>
           <p>Build and publish formal/practice tests</p>
         </div>
-        {canAuthor ? (
-          <PageHeaderActions>
+        <PageHeaderActions>
+          <LayoutViewToggle value={viewMode} onChange={setViewMode} />
+          {canAuthor ? (
             <button type="button" className="btn" onClick={openCreate}>
               Create draft
             </button>
-          </PageHeaderActions>
-        ) : null}
+          ) : null}
+        </PageHeaderActions>
       </div>
 
       <PageState
@@ -257,78 +268,136 @@ export function TestsPage() {
             setMode('');
           }}
         />
-        <div className="panel">
-          <table>
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Mode</th>
-                <th>Questions</th>
-                <th>Max score</th>
-                <th>State</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        {viewMode === 'grid' ? (
+          <div className="entity-grid">
+            {filtered.length === 0 ? (
+              <p className="muted">No rows match filters.</p>
+            ) : (
+              filtered.map((test) => (
+                <div key={test.id} className="entity-card">
+                  <div className="entity-card-cover-empty" />
+                  <div className="entity-card-meta">
+                    <strong>{test.title}</strong>
+                    <StatusPill value={test.lifecycle} />
+                    <span className="muted small">
+                      {test.mode} · {test._count?.questions ?? test.questionCount}/{test.questionCount} questions
+                    </span>
+                  </div>
+                  <div className="entity-card-actions action-row">
+                    <button type="button" className="btn btn-ghost" onClick={() => openView(test)}>View</button>
+                    {canAuthor ? <button type="button" className="btn btn-ghost" onClick={() => openEdit(test)}>Edit</button> : null}
+                    <button type="button" className="btn btn-ghost" onClick={() => openAssign(test)}>Assign Qs</button>
+                    {hasPermission('assessments.publish') && test.lifecycle !== 'published' ? (
+                      <button type="button" className="btn" onClick={() => publish.mutate(test.id)}>Publish</button>
+                    ) : null}
+                    {canAuthor && test.lifecycle !== 'archived' ? (
+                      <button
+                        type="button"
+                        className="btn btn-danger-ghost"
+                        onClick={() => { if (confirmDelete(test.title)) archive.mutate(test.id); }}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : viewMode === 'compact' ? (
+          <div className="panel">
+            <ul className="entity-compact-list">
               {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="muted">
-                    No rows match filters.
-                  </td>
-                </tr>
+                <li className="muted">No rows match filters.</li>
               ) : (
                 filtered.map((test) => (
-                  <tr key={test.id}>
-                    <td>{test.title}</td>
-                    <td>{test.mode}</td>
-                    <td>
-                      {test._count?.questions ?? test.questionCount}/{test.questionCount}
-                    </td>
-                    <td>{test.maxScore}</td>
-                    <td>
+                  <li key={test.id}>
+                    <div className="entity-compact-main">
+                      <strong>{test.title}</strong>
+                      <span className="muted small">{test.mode} · {test._count?.questions ?? test.questionCount} questions</span>
                       <StatusPill value={test.lifecycle} />
-                    </td>
-                    <td className="action-row">
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => openView(test)}
-                      >
-                        View
-                      </button>
-                      {canAuthor ? (
+                    </div>
+                    <div className="entity-card-actions action-row">
+                      <button type="button" className="btn btn-ghost" onClick={() => openView(test)}>View</button>
+                      {canAuthor ? <button type="button" className="btn btn-ghost" onClick={() => openEdit(test)}>Edit</button> : null}
+                      {hasPermission('assessments.publish') && test.lifecycle !== 'published' ? (
+                        <button type="button" className="btn" onClick={() => publish.mutate(test.id)}>Publish</button>
+                      ) : null}
+                      {canAuthor && test.lifecycle !== 'archived' ? (
                         <button
                           type="button"
-                          className="btn btn-ghost"
-                          onClick={() => openEdit(test)}
+                          className="btn btn-danger-ghost"
+                          onClick={() => { if (confirmDelete(test.title)) archive.mutate(test.id); }}
                         >
-                          Edit
+                          Delete
                         </button>
                       ) : null}
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => openAssign(test)}
-                      >
-                        Assign questions
-                      </button>
-                      {hasPermission('assessments.publish') &&
-                      test.lifecycle !== 'published' ? (
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => publish.mutate(test.id)}
-                        >
-                          Publish
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
+                    </div>
+                  </li>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </div>
+        ) : (
+          <div className="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Mode</th>
+                  <th>Questions</th>
+                  <th>Max score</th>
+                  <th>State</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="muted">
+                      No rows match filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((test) => (
+                    <tr key={test.id}>
+                      <td>{test.title}</td>
+                      <td>{test.mode}</td>
+                      <td>
+                        {test._count?.questions ?? test.questionCount}/{test.questionCount}
+                      </td>
+                      <td>{test.maxScore}</td>
+                      <td>
+                        <StatusPill value={test.lifecycle} />
+                      </td>
+                      <td className="action-row">
+                        <button type="button" className="btn btn-ghost" onClick={() => openView(test)}>View</button>
+                        {canAuthor ? (
+                          <button type="button" className="btn btn-ghost" onClick={() => openEdit(test)}>Edit</button>
+                        ) : null}
+                        <button type="button" className="btn btn-ghost" onClick={() => openAssign(test)}>
+                          Assign questions
+                        </button>
+                        {hasPermission('assessments.publish') && test.lifecycle !== 'published' ? (
+                          <button type="button" className="btn" onClick={() => publish.mutate(test.id)}>Publish</button>
+                        ) : null}
+                        {canAuthor && test.lifecycle !== 'archived' ? (
+                          <button
+                            type="button"
+                            className="btn btn-danger-ghost"
+                            onClick={() => { if (confirmDelete(test.title)) archive.mutate(test.id); }}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </PageState>
 
       <ContentDrawer open={formOpen} onClose={closeDrawer} title={formTitle} size="full">

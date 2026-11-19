@@ -7,7 +7,10 @@ import {
   filterBySearch,
   filterWhen,
 } from '../../../shared/lib/tableFilters';
+import { confirmDelete } from '../../../shared/lib/confirmDelete';
+import { usePersistedViewMode } from '../../../shared/lib/usePersistedViewMode';
 import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
+import { LayoutViewToggle } from '../../../shared/ui/LayoutViewToggle';
 import { PageHeaderActions } from '../../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
 import { TableFilterBar } from '../../../shared/ui/TableFilterBar';
@@ -55,6 +58,7 @@ export function ExamsPage() {
   const [related, setRelated] = useState('');
   const [search, setSearch] = useState('');
   const [lifecycle, setLifecycle] = useState('');
+  const [viewMode, setViewMode] = usePersistedViewMode('admin.exams.view');
 
   const list = useQuery({
     queryKey: ['exams'],
@@ -142,6 +146,11 @@ export function ExamsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exams'] }),
   });
 
+  const archive = useMutation({
+    mutationFn: (id: string) => apiFetch(`/admin/exams/${id}/archive`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['exams'] }),
+  });
+
   const rows = list.data ?? [];
   const filtered = useMemo(() => {
     let next = filterBySearch(rows, search, (row) => `${row.title} ${row.summary ?? ''}`);
@@ -157,6 +166,33 @@ export function ExamsPage() {
   const drawerTitle =
     mode === 'view' ? 'View exam' : mode === 'edit' ? 'Edit exam' : 'Add exam';
 
+  const renderActions = (exam: Exam) => (
+    <>
+      <button type="button" className="btn btn-ghost" onClick={() => openView(exam)}>
+        View
+      </button>
+      {canEdit ? (
+        <button type="button" className="btn btn-ghost" onClick={() => openEdit(exam)}>
+          Edit
+        </button>
+      ) : null}
+      {exam.lifecycle !== 'published' && hasPermission('content.publish') ? (
+        <button type="button" className="btn" onClick={() => publish.mutate(exam.id)}>
+          Publish
+        </button>
+      ) : null}
+      {hasPermission('content.archive') && exam.lifecycle !== 'archived' ? (
+        <button
+          type="button"
+          className="btn btn-danger-ghost"
+          onClick={() => { if (confirmDelete(exam.title)) archive.mutate(exam.id); }}
+        >
+          Delete
+        </button>
+      ) : null}
+    </>
+  );
+
   return (
     <section>
       <div className="page-header">
@@ -164,13 +200,14 @@ export function ExamsPage() {
           <h1>Competitive exams</h1>
           <p>Published exams and their tests. Explore tiles do not fill this list.</p>
         </div>
-        {canCreate ? (
-          <PageHeaderActions>
+        <PageHeaderActions>
+          <LayoutViewToggle value={viewMode} onChange={setViewMode} />
+          {canCreate ? (
             <button type="button" className="btn" onClick={openCreate}>
               Add exam
             </button>
-          </PageHeaderActions>
-        ) : null}
+          ) : null}
+        </PageHeaderActions>
       </div>
       <PageState
         loading={list.isLoading}
@@ -194,56 +231,83 @@ export function ExamsPage() {
             setLifecycle('');
           }}
         />
-        <div className="panel">
-          <table>
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Pricing</th>
-                <th>Tests</th>
-                <th>Learners</th>
-                <th>State</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((exam) => (
-                <tr key={exam.id}>
-                  <td>{exam.title}</td>
-                  <td>{exam.commercialMode === 'paid' ? 'Paid' : 'Free'}</td>
-                  <td>{exam._count?.tests ?? 0}</td>
-                  <td>{exam.learnerCount}</td>
-                  <td>
+        {viewMode === 'grid' ? (
+          <div className="entity-grid">
+            {filtered.length === 0 ? (
+              <p className="muted">No rows match filters.</p>
+            ) : (
+              filtered.map((exam) => (
+                <div key={exam.id} className="entity-card">
+                  <div className="entity-card-cover-empty" />
+                  <div className="entity-card-meta">
+                    <strong>{exam.title}</strong>
                     <StatusPill value={exam.lifecycle} />
-                  </td>
-                  <td className="action-row">
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => openView(exam)}
-                    >
-                      View
-                    </button>
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => openEdit(exam)}
-                      >
-                        Edit
-                      </button>
-                    ) : null}
-                    {exam.lifecycle !== 'published' && hasPermission('content.publish') ? (
-                      <button type="button" className="btn" onClick={() => publish.mutate(exam.id)}>
-                        Publish
-                      </button>
-                    ) : null}
-                  </td>
+                    <span className="muted small">
+                      {exam.commercialMode === 'paid' ? 'Paid' : 'Free'} · {exam._count?.tests ?? 0} tests · {exam.learnerCount} learners
+                    </span>
+                  </div>
+                  <div className="entity-card-actions action-row">
+                    {renderActions(exam)}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : viewMode === 'compact' ? (
+          <div className="panel">
+            <ul className="entity-compact-list">
+              {filtered.length === 0 ? (
+                <li className="muted">No rows match filters.</li>
+              ) : (
+                filtered.map((exam) => (
+                  <li key={exam.id}>
+                    <div className="entity-compact-main">
+                      <strong>{exam.title}</strong>
+                      <span className="muted small">
+                        {exam.commercialMode === 'paid' ? 'Paid' : 'Free'} · {exam._count?.tests ?? 0} tests
+                      </span>
+                      <StatusPill value={exam.lifecycle} />
+                    </div>
+                    <div className="entity-card-actions action-row">
+                      {renderActions(exam)}
+                    </div>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+        ) : (
+          <div className="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Pricing</th>
+                  <th>Tests</th>
+                  <th>Learners</th>
+                  <th>State</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filtered.map((exam) => (
+                  <tr key={exam.id}>
+                    <td>{exam.title}</td>
+                    <td>{exam.commercialMode === 'paid' ? 'Paid' : 'Free'}</td>
+                    <td>{exam._count?.tests ?? 0}</td>
+                    <td>{exam.learnerCount}</td>
+                    <td>
+                      <StatusPill value={exam.lifecycle} />
+                    </td>
+                    <td className="action-row">
+                      {renderActions(exam)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </PageState>
       <ContentDrawer open={open} onClose={closeDrawer} title={drawerTitle}>
         <form

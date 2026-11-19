@@ -56,4 +56,10 @@ export class ExamsController {
   publish(@Param('id') id: string, @CurrentUser() user: Actor) {
     return this.exams.publish(id, user);
   }
+
+  @Post(':id/archive')
+  @RequirePermissions('content.archive')
+  archive(@Param('id') id: string, @CurrentUser() user: Actor) {
+    return this.exams.archive(id, user);
+  }
 }

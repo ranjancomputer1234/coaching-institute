@@ -166,6 +166,28 @@ export class ExploreService {
     return section;
   }
 
+  async archive(id: string, actor: Actor) {
+    const before = await this.findOne(id);
+    const section = await this.prisma.exploreSection.update({
+      where: { id },
+      data: {
+        lifecycle: ContentLifecycle.archived,
+        revision: { increment: 1 },
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'explore.archive',
+      resourceType: 'ExploreSection',
+      resourceId: id,
+      before: { lifecycle: before.lifecycle },
+      after: { lifecycle: section.lifecycle },
+      severity: AuditSeverity.notice,
+    });
+    return section;
+  }
+
   async reorder(orderedIds: string[], actor: Actor) {
     await this.prisma.$transaction(
       orderedIds.map((id, index) =>

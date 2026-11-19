@@ -250,6 +250,28 @@ export class CoursesService {
     return course;
   }
 
+  async archive(id: string, actor: Actor) {
+    const before = await this.findOne(id);
+    const course = await this.prisma.course.update({
+      where: { id },
+      data: {
+        lifecycle: ContentLifecycle.archived,
+        revision: { increment: 1 },
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'course.archive',
+      resourceType: 'Course',
+      resourceId: id,
+      before: { lifecycle: before.lifecycle },
+      after: { lifecycle: course.lifecycle },
+      severity: AuditSeverity.notice,
+    });
+    return course;
+  }
+
   async addLesson(courseId: string, dto: CreateLessonDto, actor: Actor) {
     const course = await this.findOne(courseId);
     let sortOrder = dto.sortOrder;
