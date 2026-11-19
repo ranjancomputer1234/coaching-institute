@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -13,6 +14,7 @@ import {
   CreateTemplateDto,
   IssueDocumentDto,
   RevokeDocumentDto,
+  UpdateDocumentTemplateDto,
 } from './dto/document.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { LearnerJwtAuthGuard } from '../../common/guards/learner-jwt-auth.guard';
@@ -36,10 +38,27 @@ export class DocumentsController {
   }
 
   @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Get('admin/document-templates/:id')
+  @RequirePermissions('documents.generate')
+  getTemplate(@Param('id') id: string) {
+    return this.documents.getTemplate(id);
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Post('admin/document-templates')
   @RequirePermissions('documents.generate')
   createTemplate(@Body() dto: CreateTemplateDto) {
     return this.documents.createTemplate(dto);
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Patch('admin/document-templates/:id')
+  @RequirePermissions('documents.generate')
+  updateTemplate(
+    @Param('id') id: string,
+    @Body() dto: UpdateDocumentTemplateDto,
+  ) {
+    return this.documents.updateTemplate(id, dto);
   }
 
   @UseGuards(JwtAuthGuard, PermissionsGuard)

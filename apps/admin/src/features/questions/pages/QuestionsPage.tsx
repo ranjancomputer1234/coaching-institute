@@ -18,13 +18,19 @@ type Question = {
   status: string;
   marks: number;
   subject: string | null;
+  explanation?: string | null;
   options: Array<{ id: string; label: string; isCorrect: boolean }>;
 };
+
+type DrawerMode = 'create' | 'view' | 'edit';
 
 export function QuestionsPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
+  const canAuthor = hasPermission('assessments.author');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [mode, setMode] = useState<DrawerMode>('create');
+  const [editing, setEditing] = useState<Question | null>(null);
   const [prompt, setPrompt] = useState('');
   const [optA, setOptA] = useState('');
   const [optB, setOptB] = useState('');
@@ -40,29 +46,75 @@ export function QuestionsPage() {
     queryFn: () => apiFetch<Question[]>('/admin/questions'),
   });
 
-  const create = useMutation({
+  const resetForm = () => {
+    setEditing(null);
+    setPrompt('');
+    setOptA('');
+    setOptB('');
+    setOptC('');
+    setOptD('');
+    setCorrect(0);
+  };
+
+  const fillForm = (q: Question) => {
+    setEditing(q);
+    setPrompt(q.prompt);
+    setOptA(q.options[0]?.label ?? '');
+    setOptB(q.options[1]?.label ?? '');
+    setOptC(q.options[2]?.label ?? '');
+    setOptD(q.options[3]?.label ?? '');
+    const correctIndex = q.options.findIndex((o) => o.isCorrect);
+    setCorrect(correctIndex >= 0 ? correctIndex : 0);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setMode('create');
+    setDrawerOpen(true);
+  };
+
+  const openView = (q: Question) => {
+    fillForm(q);
+    setMode('view');
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (q: Question) => {
+    fillForm(q);
+    setMode('edit');
+    setDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    resetForm();
+  };
+
+  const save = useMutation({
     mutationFn: () => {
       const labels = [optA, optB, optC, optD].filter(Boolean);
+      const body = {
+        prompt,
+        type: 'single_choice',
+        options: labels.map((label, i) => ({
+          label,
+          isCorrect: i === correct,
+          sortOrder: i,
+        })),
+      };
+      if (mode === 'edit' && editing) {
+        return apiFetch(`/admin/questions/${editing.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+      }
       return apiFetch('/admin/questions', {
         method: 'POST',
-        body: JSON.stringify({
-          prompt,
-          type: 'single_choice',
-          options: labels.map((label, i) => ({
-            label,
-            isCorrect: i === correct,
-            sortOrder: i,
-          })),
-        }),
+        body: JSON.stringify(body),
       });
     },
     onSuccess: () => {
-      setPrompt('');
-      setOptA('');
-      setOptB('');
-      setOptC('');
-      setOptD('');
-      setDrawerOpen(false);
+      closeDrawer();
       queryClient.invalidateQueries({ queryKey: ['questions'] });
     },
   });
@@ -91,6 +143,10 @@ export function QuestionsPage() {
     [rows],
   );
 
+  const readOnly = mode === 'view';
+  const drawerTitle =
+    mode === 'view' ? 'View question' : mode === 'edit' ? 'Edit question' : 'Add question';
+
   return (
     <section>
       <div className="page-header">
@@ -98,9 +154,9 @@ export function QuestionsPage() {
           <h1>Question bank</h1>
           <p>Single-choice questions (mobile-compatible)</p>
         </div>
-        {hasPermission('assessments.author') ? (
+        {canAuthor ? (
           <PageHeaderActions>
-            <button type="button" className="btn" onClick={() => setDrawerOpen(true)}>
+            <button type="button" className="btn" onClick={openCreate}>
               Add question
             </button>
           </PageHeaderActions>
@@ -175,7 +231,23 @@ export function QuestionsPage() {
                         </div>
                       ))}
                     </td>
-                    <td>
+                    <td className="action-row">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => openView(q)}
+                      >
+                        View
+                      </button>
+                      {canAuthor ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => openEdit(q)}
+                        >
+                          Edit
+                        </button>
+                      ) : null}
                       {hasPermission('assessments.publish') &&
                       q.status !== 'approved' ? (
                         <button
@@ -195,17 +267,13 @@ export function QuestionsPage() {
         </div>
       </PageState>
 
-      <ContentDrawer
-        open={drawerOpen && hasPermission('assessments.author')}
-        onClose={() => setDrawerOpen(false)}
-        title="Add question"
-        size="full"
-      >
+      <ContentDrawer open={drawerOpen} onClose={closeDrawer} title={drawerTitle} size="full">
         <form
           className="stack-form"
           onSubmit={(e) => {
             e.preventDefault();
-            create.mutate();
+            if (readOnly) return;
+            save.mutate();
           }}
         >
           <div className="field">
@@ -215,6 +283,8 @@ export function QuestionsPage() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               required
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           {[
@@ -230,6 +300,7 @@ export function QuestionsPage() {
                   name="correct"
                   checked={correct === i}
                   onChange={() => setCorrect(i)}
+                  disabled={readOnly}
                 />{' '}
                 Option {String(label)} (correct if selected)
               </label>
@@ -237,14 +308,23 @@ export function QuestionsPage() {
                 value={String(value)}
                 onChange={(e) => (setter as (v: string) => void)(e.target.value)}
                 required={i < 2}
+                readOnly={readOnly}
+                disabled={readOnly}
               />
             </div>
           ))}
-          <button type="submit" className="btn" disabled={create.isPending}>
-            Add question
-          </button>
-          {create.error instanceof Error ? (
-            <p className="error">{create.error.message}</p>
+          {mode === 'view' && canAuthor ? (
+            <button type="button" className="btn" onClick={() => setMode('edit')}>
+              Edit question
+            </button>
+          ) : null}
+          {!readOnly ? (
+            <button type="submit" className="btn" disabled={save.isPending}>
+              {mode === 'edit' ? 'Save changes' : 'Add question'}
+            </button>
+          ) : null}
+          {save.error instanceof Error ? (
+            <p className="error">{save.error.message}</p>
           ) : null}
         </form>
       </ContentDrawer>

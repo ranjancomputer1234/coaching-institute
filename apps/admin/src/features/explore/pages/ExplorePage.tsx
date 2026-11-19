@@ -22,39 +22,137 @@ type ExploreSection = {
   sortOrder: number;
   lifecycle: string;
   homeVisible: boolean;
+  description?: string | null;
 };
+
+type DrawerMode = 'create' | 'view' | 'edit';
+
+const CATEGORIES = [
+  { value: 'learn', label: 'Learn' },
+  { value: 'prepare', label: 'Prepare' },
+  { value: 'discover', label: 'Discover' },
+];
+
+const TARGETS = [
+  { kind: 'catalog', ref: 'course,all', label: 'Courses (all)' },
+  { kind: 'catalog', ref: 'course,free', label: 'Courses (free)' },
+  { kind: 'catalog', ref: 'course,paid', label: 'Courses (paid)' },
+  { kind: 'catalog', ref: 'exam', label: 'Exams' },
+  { kind: 'catalog', ref: 'news', label: 'News' },
+  { kind: 'catalog', ref: 'topic', label: 'Awareness' },
+  { kind: 'catalog', ref: 'fact', label: 'Facts' },
+  { kind: 'catalog', ref: 'interview', label: 'Interview' },
+];
+
+function targetKey(kind: string, ref: string) {
+  return `${kind}|${ref}`;
+}
+
+function splitTarget(value: string) {
+  const index = value.indexOf('|');
+  if (index < 0) return { targetKind: value, targetRef: '' };
+  return {
+    targetKind: value.slice(0, index),
+    targetRef: value.slice(index + 1),
+  };
+}
 
 export function ExplorePage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
+  const canManage = hasPermission('explore.manage');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [mode, setMode] = useState<DrawerMode>('create');
+  const [editing, setEditing] = useState<ExploreSection | null>(null);
   const [title, setTitle] = useState('');
   const [slug, setSlug] = useState('');
+  const [formCategory, setFormCategory] = useState('learn');
+  const [target, setTarget] = useState(targetKey('catalog', 'course,all'));
+  const [homeVisible, setHomeVisible] = useState(true);
+  const [description, setDescription] = useState('');
   const [search, setSearch] = useState('');
   const [lifecycle, setLifecycle] = useState('');
-  const [category, setCategory] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
 
   const list = useQuery({
     queryKey: ['explore'],
     queryFn: () => apiFetch<ExploreSection[]>('/admin/explore-sections'),
   });
 
-  const create = useMutation({
-    mutationFn: () =>
-      apiFetch('/admin/explore-sections', {
+  const resetForm = () => {
+    setEditing(null);
+    setTitle('');
+    setSlug('');
+    setFormCategory('learn');
+    setTarget(targetKey('catalog', 'course,all'));
+    setHomeVisible(true);
+    setDescription('');
+  };
+
+  const fillForm = (section: ExploreSection) => {
+    setEditing(section);
+    setTitle(section.title);
+    setSlug(section.slug);
+    setFormCategory(section.category || 'learn');
+    setTarget(targetKey(section.targetKind, section.targetRef));
+    setHomeVisible(section.homeVisible);
+    setDescription(section.description ?? '');
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setMode('create');
+    setDrawerOpen(true);
+  };
+
+  const openView = (section: ExploreSection) => {
+    fillForm(section);
+    setMode('view');
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (section: ExploreSection) => {
+    fillForm(section);
+    setMode('edit');
+    setDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    resetForm();
+  };
+
+  const save = useMutation({
+    mutationFn: () => {
+      const parsed = splitTarget(target);
+      if (mode === 'edit' && editing) {
+        return apiFetch(`/admin/explore-sections/${editing.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            title,
+            description: description.trim() || undefined,
+            category: formCategory,
+            targetKind: parsed.targetKind,
+            targetRef: parsed.targetRef,
+            homeVisible,
+          }),
+        });
+      }
+      return apiFetch('/admin/explore-sections', {
         method: 'POST',
         body: JSON.stringify({
           title,
           slug,
-          category: 'learn',
-          targetKind: 'catalog',
-          targetRef: 'course,all',
+          category: formCategory,
+          targetKind: parsed.targetKind,
+          targetRef: parsed.targetRef,
+          homeVisible,
+          description: description.trim() || undefined,
         }),
-      }),
+      });
+    },
     onSuccess: () => {
-      setTitle('');
-      setSlug('');
-      setDrawerOpen(false);
+      closeDrawer();
       queryClient.invalidateQueries({ queryKey: ['explore'] });
     },
   });
@@ -62,15 +160,6 @@ export function ExplorePage() {
   const publish = useMutation({
     mutationFn: (id: string) =>
       apiFetch(`/admin/explore-sections/${id}/publish`, { method: 'POST' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['explore'] }),
-  });
-
-  const rename = useMutation({
-    mutationFn: ({ id, nextTitle }: { id: string; nextTitle: string }) =>
-      apiFetch(`/admin/explore-sections/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ title: nextTitle }),
-      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['explore'] }),
   });
 
@@ -101,9 +190,9 @@ export function ExplorePage() {
     let next = rows;
     next = filterBySearch(next, search, (s) => `${s.title} ${s.slug}`);
     next = filterWhen(next, lifecycle, (s, v) => s.lifecycle === v);
-    next = filterWhen(next, category, (s, v) => s.category === v);
+    next = filterWhen(next, categoryFilter, (s, v) => s.category === v);
     return next;
-  }, [rows, search, lifecycle, category]);
+  }, [rows, search, lifecycle, categoryFilter]);
 
   const lifecycleOptions = useMemo(
     () => distinctOptions(rows.map((s) => s.lifecycle)),
@@ -114,6 +203,14 @@ export function ExplorePage() {
     [rows],
   );
 
+  const readOnly = mode === 'view';
+  const drawerTitle =
+    mode === 'view'
+      ? 'View explore section'
+      : mode === 'edit'
+        ? 'Edit explore section'
+        : 'Create explore section';
+
   return (
     <section>
       <div className="page-header">
@@ -121,9 +218,9 @@ export function ExplorePage() {
           <h1>Explore sections</h1>
           <p>Rename and reorder without breaking stable IDs or deep links</p>
         </div>
-        {hasPermission('explore.manage') ? (
+        {canManage ? (
           <PageHeaderActions>
-            <button type="button" className="btn" onClick={() => setDrawerOpen(true)}>
+            <button type="button" className="btn" onClick={openCreate}>
               Create draft
             </button>
           </PageHeaderActions>
@@ -153,15 +250,15 @@ export function ExplorePage() {
             {
               id: 'category',
               label: 'Category',
-              value: category,
-              onChange: setCategory,
+              value: categoryFilter,
+              onChange: setCategoryFilter,
               options: categoryOptions,
             },
           ]}
           onReset={() => {
             setSearch('');
             setLifecycle('');
-            setCategory('');
+            setCategoryFilter('');
           }}
         />
         <div className="panel">
@@ -221,17 +318,20 @@ export function ExplorePage() {
                       <button
                         type="button"
                         className="btn btn-ghost"
-                        onClick={() => {
-                          const next = prompt('New display title', section.title);
-                          if (next && next !== section.title) {
-                            rename.mutate({ id: section.id, nextTitle: next });
-                          }
-                        }}
+                        onClick={() => openView(section)}
                       >
-                        Rename
+                        View
                       </button>
-                      {hasPermission('explore.manage') &&
-                      section.lifecycle !== 'published' ? (
+                      {canManage ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => openEdit(section)}
+                        >
+                          Edit
+                        </button>
+                      ) : null}
+                      {canManage && section.lifecycle !== 'published' ? (
                         <button
                           type="button"
                           className="btn"
@@ -249,17 +349,13 @@ export function ExplorePage() {
         </div>
       </PageState>
 
-      <ContentDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        title="Create explore section"
-        size="full"
-      >
+      <ContentDrawer open={drawerOpen} onClose={closeDrawer} title={drawerTitle} size="full">
         <form
           className="stack-form"
           onSubmit={(e) => {
             e.preventDefault();
-            create.mutate();
+            if (readOnly) return;
+            save.mutate();
           }}
         >
           <div className="field">
@@ -269,20 +365,90 @@ export function ExplorePage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
+              readOnly={readOnly}
+              disabled={readOnly}
+            />
+          </div>
+          {mode === 'create' ? (
+            <div className="field">
+              <label htmlFor="explore-slug">Slug (stable)</label>
+              <input
+                id="explore-slug"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                required
+              />
+            </div>
+          ) : (
+            <div className="field">
+              <label>Slug</label>
+              <p className="muted">{slug}</p>
+            </div>
+          )}
+          <div className="field">
+            <label htmlFor="explore-category">Category</label>
+            <select
+              id="explore-category"
+              value={formCategory}
+              onChange={(e) => setFormCategory(e.target.value)}
+              disabled={readOnly}
+            >
+              {CATEGORIES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="explore-target">Opens</label>
+            <select
+              id="explore-target"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              disabled={readOnly}
+            >
+              {TARGETS.map((item) => (
+                <option key={targetKey(item.kind, item.ref)} value={targetKey(item.kind, item.ref)}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="explore-description">Description</label>
+            <input
+              id="explore-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           <div className="field">
-            <label htmlFor="explore-slug">Slug (stable)</label>
-            <input
-              id="explore-slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              required
-            />
+            <label>
+              <input
+                type="checkbox"
+                checked={homeVisible}
+                onChange={(e) => setHomeVisible(e.target.checked)}
+                disabled={readOnly}
+              />{' '}
+              Show on home
+            </label>
           </div>
-          <button type="submit" className="btn">
-            Create draft
-          </button>
+          {mode === 'view' && canManage ? (
+            <button type="button" className="btn" onClick={() => setMode('edit')}>
+              Edit section
+            </button>
+          ) : null}
+          {!readOnly ? (
+            <button type="submit" className="btn" disabled={save.isPending}>
+              {mode === 'edit' ? 'Save changes' : 'Create draft'}
+            </button>
+          ) : null}
+          {save.error instanceof Error ? (
+            <p className="error">{save.error.message}</p>
+          ) : null}
         </form>
       </ContentDrawer>
     </section>

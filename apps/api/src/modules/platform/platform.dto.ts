@@ -101,6 +101,114 @@ export class CreateEditorialDto {
   highlightsJson?: string;
 }
 
+export class UpdateEditorialDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  summary?: string;
+
+  @IsOptional()
+  @IsString()
+  body?: string;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  pricing?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  featured?: boolean;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  iconKey?: string;
+
+  @IsOptional()
+  @IsString()
+  byline?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  readingMinutes?: number;
+
+  @IsOptional()
+  @IsString()
+  explanation?: string;
+
+  @IsOptional()
+  @IsString()
+  quizId?: string;
+
+  @IsOptional()
+  @IsString()
+  schema?: string;
+
+  @IsOptional()
+  @IsString()
+  prompt?: string;
+
+  @IsOptional()
+  @IsString()
+  modelAnswer?: string;
+
+  @IsOptional()
+  @IsString()
+  entriesJson?: string;
+
+  @IsOptional()
+  @IsString()
+  summaryChipsJson?: string;
+
+  @IsOptional()
+  @IsString()
+  tagsJson?: string;
+
+  @IsOptional()
+  @IsString()
+  highlightsJson?: string;
+}
+
+export class UpdateContentCategoryDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  summary?: string;
+
+  @IsOptional()
+  @IsString()
+  pricing?: string;
+
+  @IsOptional()
+  @IsString()
+  iconKey?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+}
+
 export class CreateContentCategoryDto {
   @IsOptional()
   @IsString()
@@ -168,6 +276,44 @@ export class CreateLiveClassDto {
   capacity?: number;
 }
 
+export class UpdateLiveClassDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  title?: string;
+
+  @IsOptional()
+  @IsDateString()
+  startsAt?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endsAt?: string;
+
+  @IsOptional()
+  @IsString()
+  courseId?: string;
+
+  @IsOptional()
+  @IsString()
+  batchId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  learnerIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  hostName?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  capacity?: number;
+}
+
 export class CreateTemplateDto {
   @IsString()
   @MinLength(2)
@@ -186,6 +332,22 @@ export class CreateTemplateDto {
   channel?: string;
 }
 
+export class UpdateTemplateDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  body?: string;
+
+  @IsOptional()
+  @IsString()
+  channel?: string;
+}
+
 export class CreateCampaignDto {
   @IsString()
   @MinLength(2)
@@ -194,6 +356,50 @@ export class CreateCampaignDto {
   @IsString()
   @MinLength(1)
   body!: string;
+
+  @IsOptional()
+  @IsString()
+  audience?: string;
+
+  @IsOptional()
+  @IsString()
+  audienceRef?: string;
+
+  @IsOptional()
+  @IsString()
+  templateId?: string;
+
+  @IsOptional()
+  @IsIn(['classes', 'tests', 'news', 'offers', 'system'])
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  actionLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  targetKind?: string;
+
+  @IsOptional()
+  @IsString()
+  targetRef?: string;
+
+  @IsOptional()
+  @IsIn(['low', 'normal', 'high'])
+  priority?: string;
+}
+
+export class UpdateCampaignDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  body?: string;
 
   @IsOptional()
   @IsString()
@@ -246,6 +452,27 @@ export class CreateProductDto {
   courseId?: string;
 }
 
+export class UpdateProductDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  sku?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  title?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  pricePaise?: number;
+
+  @IsOptional()
+  @IsString()
+  courseId?: string;
+}
+
 export class CreateCouponDto {
   @IsString()
   @MinLength(2)
@@ -260,6 +487,27 @@ export class CreateCouponDto {
   @IsInt()
   @Min(1)
   amountOffPaise?: number;
+}
+
+export class UpdateCouponDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  code?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  percentOff?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  amountOffPaise?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
 }
 
 export class CreateOrderDto {

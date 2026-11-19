@@ -34,6 +34,11 @@ type Attempt = {
 type Test = { id: string; title: string; lifecycle: string };
 type Learner = { id: string; firstName: string; lastName: string };
 
+function fmt(iso: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString();
+}
+
 export function AttemptsPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -44,6 +49,10 @@ export function AttemptsPage() {
   const [status, setStatus] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  // View drawer state
+  const [viewAttempt, setViewAttempt] = useState<Attempt | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
 
   const list = useQuery({
     queryKey: ['attempts'],
@@ -179,7 +188,14 @@ export function AttemptsPage() {
                         ? `${a.result.rawScore}/${a.result.maxScore} (${a.result.percentage.toFixed(0)}%)`
                         : '—'}
                     </td>
-                    <td>
+                    <td className="action-row">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => { setViewAttempt(a); setViewOpen(true); }}
+                      >
+                        View
+                      </button>
                       {a.status === 'in_progress' || a.status === 'created' ? (
                         <button
                           type="button"
@@ -198,6 +214,50 @@ export function AttemptsPage() {
         </div>
       </PageState>
 
+      {/* View drawer */}
+      <ContentDrawer
+        open={viewOpen}
+        onClose={() => { setViewOpen(false); setViewAttempt(null); }}
+        title="View attempt"
+      >
+        {viewAttempt ? (
+          <dl className="drawer-dl">
+            <dt>ID</dt>
+            <dd className="muted small">{viewAttempt.id}</dd>
+            <dt>Learner</dt>
+            <dd>{viewAttempt.learner.firstName} {viewAttempt.learner.lastName}</dd>
+            <dt>Learner ID</dt>
+            <dd className="muted small">{viewAttempt.learner.id}</dd>
+            <dt>Test</dt>
+            <dd>{viewAttempt.test.title}</dd>
+            <dt>Test ID</dt>
+            <dd className="muted small">{viewAttempt.test.id}</dd>
+            <dt>Status</dt>
+            <dd><StatusPill value={viewAttempt.status} /></dd>
+            <dt>Started</dt>
+            <dd>{fmt(viewAttempt.startedAt)}</dd>
+            <dt>Expires</dt>
+            <dd>{fmt(viewAttempt.expiresAt)}</dd>
+            <dt>Submitted</dt>
+            <dd>{fmt(viewAttempt.submittedAt)}</dd>
+            {viewAttempt.result ? (
+              <>
+                <dt>Score</dt>
+                <dd>
+                  {viewAttempt.result.rawScore}/{viewAttempt.result.maxScore}
+                  {' '}({viewAttempt.result.percentage.toFixed(0)}%)
+                </dd>
+                <dt>Passed</dt>
+                <dd>{viewAttempt.result.passed ? 'Yes' : 'No'}</dd>
+                <dt>Result published</dt>
+                <dd>{viewAttempt.result.published ? 'Yes' : 'No'}</dd>
+              </>
+            ) : null}
+          </dl>
+        ) : null}
+      </ContentDrawer>
+
+      {/* Create drawer */}
       <ContentDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}

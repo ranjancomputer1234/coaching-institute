@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { apiFetch } from '../../../shared/api/client';
 import { useAuth } from '../../../shared/auth/AuthContext';
 import { filterBySearch } from '../../../shared/lib/tableFilters';
+import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
 import { TableFilterBar } from '../../../shared/ui/TableFilterBar';
 
@@ -25,6 +26,10 @@ export function ResultsPage() {
   const [search, setSearch] = useState('');
   const [published, setPublished] = useState('');
   const [passed, setPassed] = useState('');
+
+  // View drawer
+  const [viewResult, setViewResult] = useState<ResultRow | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
 
   const list = useQuery({
     queryKey: ['results'],
@@ -139,7 +144,14 @@ export function ResultsPage() {
                     <td>
                       <StatusPill value={r.published ? 'published' : 'unpublished'} />
                     </td>
-                    <td>
+                    <td className="action-row">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => { setViewResult(r); setViewOpen(true); }}
+                      >
+                        View
+                      </button>
                       {!r.published && hasPermission('assessments.publish') ? (
                         <button
                           type="button"
@@ -157,6 +169,39 @@ export function ResultsPage() {
           </table>
         </div>
       </PageState>
+
+      <ContentDrawer
+        open={viewOpen}
+        onClose={() => { setViewOpen(false); setViewResult(null); }}
+        title="View result"
+      >
+        {viewResult ? (
+          <dl className="drawer-dl">
+            <dt>ID</dt>
+            <dd className="muted small">{viewResult.id}</dd>
+            <dt>Learner</dt>
+            <dd>
+              {viewResult.attempt.learner.firstName}{' '}
+              {viewResult.attempt.learner.lastName}
+            </dd>
+            <dt>Test</dt>
+            <dd>{viewResult.attempt.test.title}</dd>
+            <dt>Test ID</dt>
+            <dd className="muted small">{viewResult.attempt.test.id}</dd>
+            <dt>Score</dt>
+            <dd>
+              {viewResult.rawScore}/{viewResult.maxScore}
+              {' '}({viewResult.percentage.toFixed(0)}%)
+            </dd>
+            <dt>Passed</dt>
+            <dd>{viewResult.passed ? 'Yes' : 'No'}</dd>
+            <dt>Published</dt>
+            <dd>
+              <StatusPill value={viewResult.published ? 'published' : 'unpublished'} />
+            </dd>
+          </dl>
+        ) : null}
+      </ContentDrawer>
     </section>
   );
 }

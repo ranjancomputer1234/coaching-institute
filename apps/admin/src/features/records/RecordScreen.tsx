@@ -25,6 +25,11 @@ type Column = {
   value: (row: Record<string, unknown>) => string;
 };
 
+type DrawerMode = 'create' | 'view' | 'edit';
+
+/** Identifier fields that should be read-only on edit */
+const IDENTIFIER_FIELDS = new Set(['key', 'sku', 'code']);
+
 type Props = {
   title: string;
   summary: string;
@@ -38,10 +43,31 @@ type Props = {
   statusKey?: string;
   dateField?: string;
   statusFilterField?: string;
+  updatePath?: (id: string) => string;
+  detailPath?: (id: string) => string;
 };
+
+function toLocalInput(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 function initialValues(fields: FieldDef[]) {
   return Object.fromEntries(fields.map((field) => [field.name, '']));
+}
+
+function fillFromRow(row: Record<string, unknown>, fields: FieldDef[]) {
+  return Object.fromEntries(
+    fields.map((field) => {
+      const v = row[field.name];
+      if (field.type === 'datetime-local' && typeof v === 'string') {
+        return [field.name, toLocalInput(v)];
+      }
+      return [field.name, v != null ? String(v) : ''];
+    }),
+  );
 }
 
 export function RecordScreen({
@@ -57,10 +83,14 @@ export function RecordScreen({
   statusKey,
   dateField,
   statusFilterField,
+  updatePath,
+  detailPath,
 }: Props) {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [mode, setMode] = useState<DrawerMode>('create');
+  const [editingRow, setEditingRow] = useState<Record<string, unknown> | null>(null);
   const [values, setValues] = useState<Record<string, string>>(() =>
     initialValues(fields),
   );
@@ -70,6 +100,8 @@ export function RecordScreen({
   const [statusFilter, setStatusFilter] = useState('');
 
   const canCreate = Boolean(createPath) && (!permission || hasPermission(permission));
+  const canEdit = Boolean(updatePath) && (!permission || hasPermission(permission));
+  const hasActions = canEdit || Boolean(detailPath);
 
   const list = useQuery({
     queryKey: [queryKey],
@@ -97,6 +129,59 @@ export function RecordScreen({
       queryClient.invalidateQueries({ queryKey: [queryKey] });
     },
   });
+
+  const update = useMutation({
+    mutationFn: () => {
+      const id = String(editingRow!.id);
+      const body: Record<string, unknown> = {};
+      for (const field of fields) {
+        // Skip identifier fields - they cannot change
+        if (IDENTIFIER_FIELDS.has(field.name)) continue;
+        const raw = values[field.name]?.trim() ?? '';
+        if (!raw) continue;
+        if (field.type === 'number') body[field.name] = Number(raw);
+        else if (field.type === 'datetime-local') body[field.name] = new Date(raw).toISOString();
+        else body[field.name] = raw;
+      }
+      return apiFetch(updatePath!(id), {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+    },
+    onSuccess: () => {
+      setValues(initialValues(fields));
+      setEditingRow(null);
+      setDrawerOpen(false);
+      queryClient.invalidateQueries({ queryKey: [queryKey] });
+    },
+  });
+
+  const openCreate = () => {
+    setEditingRow(null);
+    setMode('create');
+    setValues(initialValues(fields));
+    setDrawerOpen(true);
+  };
+
+  const openView = (row: Record<string, unknown>) => {
+    setEditingRow(row);
+    setMode('view');
+    setValues(fillFromRow(row, fields));
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (row: Record<string, unknown>) => {
+    setEditingRow(row);
+    setMode('edit');
+    setValues(fillFromRow(row, fields));
+    setDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    setEditingRow(null);
+    setMode('create');
+  };
 
   const rows = list.data ?? [];
 
@@ -138,9 +223,22 @@ export function RecordScreen({
     return [...set].sort().map((v) => ({ value: v, label: v }));
   }, [rows, statusFilterField]);
 
+  const readOnly = mode === 'view';
+  const totalCols = columns.length + (hasActions ? 1 : 0);
+
+  const saveError = mode === 'edit' ? update.error : create.error;
+  const drawerTitle =
+    mode === 'view'
+      ? `View ${title}`
+      : mode === 'edit'
+        ? `Edit ${title}`
+        : createLabel;
+
   function onSubmit(event: FormEvent) {
     event.preventDefault();
-    create.mutate();
+    if (readOnly) return;
+    if (mode === 'edit') update.mutate();
+    else create.mutate();
   }
 
   return (
@@ -152,7 +250,7 @@ export function RecordScreen({
         </div>
         {canCreate ? (
           <PageHeaderActions>
-            <button type="button" className="btn" onClick={() => setDrawerOpen(true)}>
+            <button type="button" className="btn" onClick={openCreate}>
               {createLabel}
             </button>
           </PageHeaderActions>
@@ -207,12 +305,13 @@ export function RecordScreen({
                 {columns.map((column) => (
                   <th key={column.header}>{column.header}</th>
                 ))}
+                {hasActions ? <th>Actions</th> : null}
               </tr>
             </thead>
             <tbody>
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length} className="muted">
+                  <td colSpan={totalCols} className="muted">
                     No rows match the current filters.
                   </td>
                 </tr>
@@ -228,6 +327,26 @@ export function RecordScreen({
                         )}
                       </td>
                     ))}
+                    {hasActions ? (
+                      <td className="action-row">
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => openView(row)}
+                        >
+                          View
+                        </button>
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => openEdit(row)}
+                          >
+                            Edit
+                          </button>
+                        ) : null}
+                      </td>
+                    ) : null}
                   </tr>
                 ))
               )}
@@ -237,35 +356,57 @@ export function RecordScreen({
       </PageState>
 
       <ContentDrawer
-        open={drawerOpen && canCreate}
-        onClose={() => setDrawerOpen(false)}
-        title={createLabel}
+        open={drawerOpen && (mode !== 'create' || canCreate)}
+        onClose={closeDrawer}
+        title={drawerTitle}
         size="full"
       >
         <form className="stack-form" onSubmit={onSubmit}>
-          {fields.map((field) => (
-            <div className="field" key={field.name}>
-              <label htmlFor={`${queryKey}-${field.name}`}>{field.label}</label>
-              <input
-                id={`${queryKey}-${field.name}`}
-                type={field.type ?? 'text'}
-                required={field.required}
-                placeholder={field.placeholder}
-                value={values[field.name] ?? ''}
-                onChange={(event) =>
-                  setValues((current) => ({
-                    ...current,
-                    [field.name]: event.target.value,
-                  }))
-                }
-              />
-            </div>
-          ))}
-          <button className="btn" type="submit" disabled={create.isPending}>
-            Save
-          </button>
-          {create.error instanceof Error ? (
-            <p className="error">{create.error.message}</p>
+          {fields.map((field) => {
+            const isIdentifier = IDENTIFIER_FIELDS.has(field.name);
+            const fieldReadOnly = readOnly || (mode === 'edit' && isIdentifier);
+            return (
+              <div className="field" key={field.name}>
+                <label htmlFor={`${queryKey}-${field.name}`}>{field.label}</label>
+                <input
+                  id={`${queryKey}-${field.name}`}
+                  type={field.type ?? 'text'}
+                  required={field.required && !fieldReadOnly}
+                  placeholder={field.placeholder}
+                  value={values[field.name] ?? ''}
+                  readOnly={fieldReadOnly}
+                  disabled={fieldReadOnly}
+                  onChange={(event) => {
+                    if (fieldReadOnly) return;
+                    setValues((current) => ({
+                      ...current,
+                      [field.name]: event.target.value,
+                    }));
+                  }}
+                />
+              </div>
+            );
+          })}
+          {saveError instanceof Error ? (
+            <p className="error">{saveError.message}</p>
+          ) : null}
+          {mode === 'view' && canEdit ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setMode('edit')}
+            >
+              Edit record
+            </button>
+          ) : null}
+          {!readOnly ? (
+            <button
+              className="btn"
+              type="submit"
+              disabled={mode === 'edit' ? update.isPending : create.isPending}
+            >
+              {mode === 'edit' ? 'Save changes' : 'Save'}
+            </button>
           ) : null}
         </form>
       </ContentDrawer>

@@ -54,6 +54,8 @@ type Learner = {
   batch?: { name: string } | null;
 };
 
+type DrawerMode = 'create' | 'view' | 'edit';
+
 function parseIds(json?: string) {
   try {
     const parsed = JSON.parse(json || '[]') as unknown;
@@ -65,8 +67,17 @@ function parseIds(json?: string) {
   }
 }
 
+function toLocalInput(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function LiveClassesPage() {
   const queryClient = useQueryClient();
+  const [mode, setMode] = useState<DrawerMode>('create');
+  const [editing, setEditing] = useState<LiveClass | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [hostName, setHostName] = useState('');
@@ -117,9 +128,11 @@ export function LiveClassesPage() {
 
   useEffect(() => {
     if (!batchId || !batchDetail.data) return;
-    // Default: whole batch selected; admin can uncheck for a custom subset.
-    setSelectedLearnerIds(batchMemberIdList);
-  }, [batchId, batchDetail.data, batchMemberIdList]);
+    // Only auto-fill batch members when creating (not when editing/viewing existing)
+    if (mode === 'create') {
+      setSelectedLearnerIds(batchMemberIdList);
+    }
+  }, [batchId, batchDetail.data, batchMemberIdList, mode]);
 
   const selectableLearners: SelectablePerson[] = useMemo(() => {
     const all = learners.data ?? [];
@@ -142,6 +155,50 @@ export function LiveClassesPage() {
     [learners.data],
   );
 
+  const resetForm = () => {
+    setEditing(null);
+    setTitle('');
+    setHostName('');
+    setStartsAt('');
+    setEndsAt('');
+    setBatchId('');
+    setSelectedLearnerIds([]);
+  };
+
+  const fillForm = (row: LiveClass) => {
+    setEditing(row);
+    setTitle(row.title);
+    setHostName(row.hostName ?? '');
+    setStartsAt(toLocalInput(row.startsAt));
+    setEndsAt(toLocalInput(row.endsAt));
+    setBatchId(row.batchId ?? '');
+    setSelectedLearnerIds(parseIds(row.audienceLearnerIdsJson));
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setMode('create');
+    setDrawerOpen(true);
+  };
+
+  const openView = (row: LiveClass) => {
+    fillForm(row);
+    setMode('view');
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (row: LiveClass) => {
+    fillForm(row);
+    setMode('edit');
+    setDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    resetForm();
+    setMode('create');
+  };
+
   const create = useMutation({
     mutationFn: () =>
       apiFetch('/admin/live-classes', {
@@ -156,12 +213,26 @@ export function LiveClassesPage() {
         }),
       }),
     onSuccess: () => {
-      setTitle('');
-      setStartsAt('');
-      setEndsAt('');
-      setBatchId('');
-      setSelectedLearnerIds([]);
-      setDrawerOpen(false);
+      closeDrawer();
+      queryClient.invalidateQueries({ queryKey: ['live-classes'] });
+    },
+  });
+
+  const update = useMutation({
+    mutationFn: () =>
+      apiFetch(`/admin/live-classes/${editing!.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title,
+          hostName: hostName.trim() || undefined,
+          startsAt: new Date(startsAt).toISOString(),
+          endsAt: new Date(endsAt).toISOString(),
+          batchId: batchId || undefined,
+          learnerIds: selectedLearnerIds,
+        }),
+      }),
+    onSuccess: () => {
+      closeDrawer();
       queryClient.invalidateQueries({ queryKey: ['live-classes'] });
     },
   });
@@ -197,6 +268,15 @@ export function LiveClassesPage() {
     [rows],
   );
 
+  const readOnly = mode === 'view';
+  const saveError = mode === 'edit' ? update.error : create.error;
+  const drawerTitle =
+    mode === 'view'
+      ? 'View live class'
+      : mode === 'edit'
+        ? 'Edit live class'
+        : 'Schedule live class';
+
   return (
     <section>
       <div className="page-header">
@@ -208,7 +288,7 @@ export function LiveClassesPage() {
           </p>
         </div>
         <PageHeaderActions>
-          <button type="button" className="btn" onClick={() => setDrawerOpen(true)}>
+          <button type="button" className="btn" onClick={openCreate}>
             Schedule class
           </button>
         </PageHeaderActions>
@@ -257,7 +337,7 @@ export function LiveClassesPage() {
                 <th>Provider</th>
                 <th>Status</th>
                 <th>Join</th>
-                <th></th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -291,7 +371,21 @@ export function LiveClassesPage() {
                           '—'
                         )}
                       </td>
-                      <td>
+                      <td className="action-row">
+                        <button
+                          className="btn btn-ghost"
+                          type="button"
+                          onClick={() => openView(row)}
+                        >
+                          View
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          type="button"
+                          onClick={() => openEdit(row)}
+                        >
+                          Edit
+                        </button>
                         <button
                           className="btn btn-ghost"
                           type="button"
@@ -312,15 +406,17 @@ export function LiveClassesPage() {
 
       <ContentDrawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        title="Schedule live class"
+        onClose={closeDrawer}
+        title={drawerTitle}
         size="full"
       >
         <form
           className="stack-form"
           onSubmit={(event) => {
             event.preventDefault();
-            create.mutate();
+            if (readOnly) return;
+            if (mode === 'edit') update.mutate();
+            else create.mutate();
           }}
         >
           <div className="field">
@@ -330,6 +426,8 @@ export function LiveClassesPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           <div className="field">
@@ -339,6 +437,8 @@ export function LiveClassesPage() {
               value={hostName}
               onChange={(e) => setHostName(e.target.value)}
               placeholder="RACI Faculty"
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           <div className="field">
@@ -349,6 +449,8 @@ export function LiveClassesPage() {
               value={startsAt}
               onChange={(e) => setStartsAt(e.target.value)}
               required
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           <div className="field">
@@ -359,6 +461,8 @@ export function LiveClassesPage() {
               value={endsAt}
               onChange={(e) => setEndsAt(e.target.value)}
               required
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           <div className="field">
@@ -368,8 +472,9 @@ export function LiveClassesPage() {
               value={batchId}
               onChange={(e) => {
                 setBatchId(e.target.value);
-                setSelectedLearnerIds([]);
+                if (mode === 'create') setSelectedLearnerIds([]);
               }}
+              disabled={readOnly}
             >
               <option value="">All selected students only / no batch</option>
               {(batches.data ?? []).map((b) => (
@@ -380,17 +485,19 @@ export function LiveClassesPage() {
                 </option>
               ))}
             </select>
-            <p className="muted" style={{ marginBottom: 0 }}>
-              If you pick a batch and leave the list empty, everyone in that batch
-              is notified when the room is requested.
-            </p>
+            {!readOnly ? (
+              <p className="muted" style={{ marginBottom: 0 }}>
+                If you pick a batch and leave the list empty, everyone in that batch
+                is notified when the room is requested.
+              </p>
+            ) : null}
           </div>
           <div className="field">
             <label>Students (optional custom subset)</label>
             <SearchableMultiSelect
               items={selectableLearners}
               selectedIds={selectedLearnerIds}
-              onChange={setSelectedLearnerIds}
+              onChange={readOnly ? () => {} : setSelectedLearnerIds}
               loading={learners.isLoading}
               searchPlaceholder="Search name, email, phone…"
               emptyLabel="No students match"
@@ -398,12 +505,23 @@ export function LiveClassesPage() {
               filterOptions={stateOptions}
             />
           </div>
-          {create.error instanceof Error ? (
-            <p className="error">{create.error.message}</p>
+          {saveError instanceof Error ? (
+            <p className="error">{saveError.message}</p>
           ) : null}
-          <button className="btn" type="submit" disabled={create.isPending}>
-            Save draft
-          </button>
+          {mode === 'view' ? (
+            <button type="button" className="btn" onClick={() => setMode('edit')}>
+              Edit class
+            </button>
+          ) : null}
+          {!readOnly ? (
+            <button
+              className="btn"
+              type="submit"
+              disabled={mode === 'edit' ? update.isPending : create.isPending}
+            >
+              {mode === 'edit' ? 'Save changes' : 'Save draft'}
+            </button>
+          ) : null}
         </form>
       </ContentDrawer>
     </section>

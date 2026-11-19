@@ -107,6 +107,7 @@ export function AppRoutes() {
                   queryKey="products"
                   listPath="/admin/products"
                   createPath="/admin/products"
+                  updatePath={(id) => `/admin/products/${id}`}
                   permission="payments.read"
                   fields={[
                     { name: 'sku', label: 'SKU', required: true },
@@ -145,6 +146,7 @@ export function AppRoutes() {
                   queryKey="coupons"
                   listPath="/admin/coupons"
                   createPath="/admin/coupons"
+                  updatePath={(id) => `/admin/coupons/${id}`}
                   permission="payments.read"
                   fields={[
                     { name: 'code', label: 'Code', required: true },
@@ -178,6 +180,7 @@ export function AppRoutes() {
                   queryKey="templates"
                   listPath="/admin/notification-templates"
                   createPath="/admin/notification-templates"
+                  updatePath={(id) => `/admin/notification-templates/${id}`}
                   permission="notifications.send_single"
                   fields={[
                     { name: 'key', label: 'Key', required: true },
@@ -201,6 +204,7 @@ export function AppRoutes() {
                   queryKey="document-templates"
                   listPath="/admin/document-templates"
                   createPath="/admin/document-templates"
+                  updatePath={(id) => `/admin/document-templates/${id}`}
                   permission="documents.generate"
                   fields={[
                     { name: 'key', label: 'Key', required: true },

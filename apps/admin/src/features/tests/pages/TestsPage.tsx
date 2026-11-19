@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../../shared/api/client';
 import { useAuth } from '../../../shared/auth/AuthContext';
 import {
@@ -19,21 +19,35 @@ type Test = {
   lifecycle: string;
   questionCount: number;
   maxScore: number;
+  pricing?: string | null;
+  durationMinutes?: number | null;
+  examId?: string | null;
+  description?: string | null;
   _count?: { questions: number; attempts: number };
+};
+
+type TestDetail = Test & {
+  questions?: Array<{
+    questionId: string;
+    question: { id: string; prompt: string; status: string };
+  }>;
 };
 
 type Question = { id: string; prompt: string; status: string };
 
+type DrawerMode = 'create' | 'view' | 'edit' | 'assign';
+
 export function TestsPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
-  const [createOpen, setCreateOpen] = useState(false);
+  const canAuthor = hasPermission('assessments.author');
+  const [drawerMode, setDrawerMode] = useState<DrawerMode | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [draftMode, setDraftMode] = useState('practice');
   const [draftPricing, setDraftPricing] = useState('free');
   const [examId, setExamId] = useState('');
   const [durationMinutes, setDurationMinutes] = useState('30');
-  const [selectedTest, setSelectedTest] = useState<string | null>(null);
   const [selectedQuestions, setSelectedQuestions] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [lifecycle, setLifecycle] = useState('');
@@ -46,11 +60,16 @@ export function TestsPage() {
   const exams = useQuery({
     queryKey: ['exams'],
     queryFn: () => apiFetch<Array<{ id: string; title: string }>>('/admin/exams'),
-    enabled: createOpen,
+    enabled: drawerMode === 'create' || drawerMode === 'edit' || drawerMode === 'view',
   });
   const questions = useQuery({
     queryKey: ['questions', 'approved'],
     queryFn: () => apiFetch<Question[]>('/admin/questions?status=approved'),
+  });
+  const detail = useQuery({
+    queryKey: ['test', editingId],
+    enabled: Boolean(editingId) && (drawerMode === 'view' || drawerMode === 'edit' || drawerMode === 'assign'),
+    queryFn: () => apiFetch<TestDetail>(`/admin/tests/${editingId}`),
   });
 
   const approved = useMemo(
@@ -58,34 +77,102 @@ export function TestsPage() {
     [questions.data],
   );
 
-  const create = useMutation({
-    mutationFn: () =>
-      apiFetch('/admin/tests', {
+  const resetForm = () => {
+    setEditingId(null);
+    setTitle('');
+    setDraftMode('practice');
+    setDraftPricing('free');
+    setExamId('');
+    setDurationMinutes('30');
+    setSelectedQuestions([]);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setDrawerMode('create');
+  };
+
+  const openView = (test: Test) => {
+    setEditingId(test.id);
+    setTitle(test.title);
+    setDraftMode(test.mode || 'practice');
+    setDraftPricing(test.pricing || 'free');
+    setExamId(test.examId || '');
+    setDurationMinutes(String(test.durationMinutes ?? 30));
+    setDrawerMode('view');
+  };
+
+  const openEdit = (test: Test) => {
+    setEditingId(test.id);
+    setTitle(test.title);
+    setDraftMode(test.mode || 'practice');
+    setDraftPricing(test.pricing || 'free');
+    setExamId(test.examId || '');
+    setDurationMinutes(String(test.durationMinutes ?? 30));
+    setDrawerMode('edit');
+  };
+
+  const openAssign = (test: Test) => {
+    setEditingId(test.id);
+    setSelectedQuestions([]);
+    setDrawerMode('assign');
+  };
+
+  const closeDrawer = () => {
+    setDrawerMode(null);
+    resetForm();
+  };
+
+  useEffect(() => {
+    if (!detail.data || !editingId) return;
+    if (drawerMode === 'view' || drawerMode === 'edit') {
+      setTitle(detail.data.title);
+      setDraftMode(detail.data.mode || 'practice');
+      setDraftPricing(detail.data.pricing || 'free');
+      setExamId(detail.data.examId || '');
+      setDurationMinutes(String(detail.data.durationMinutes ?? 30));
+    }
+    if (drawerMode === 'assign' && detail.data.questions) {
+      setSelectedQuestions(detail.data.questions.map((q) => q.questionId));
+    }
+  }, [detail.data, editingId, drawerMode]);
+
+  const save = useMutation({
+    mutationFn: () => {
+      const body = {
+        title,
+        mode: draftMode,
+        pricing: draftPricing,
+        durationMinutes: Number(durationMinutes) || 30,
+        ...(examId ? { examId } : {}),
+      };
+      if (drawerMode === 'edit' && editingId) {
+        return apiFetch(`/admin/tests/${editingId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+      }
+      return apiFetch('/admin/tests', {
         method: 'POST',
-        body: JSON.stringify({
-          title,
-          mode: draftMode,
-          pricing: draftPricing,
-          durationMinutes: Number(durationMinutes) || 30,
-          ...(examId ? { examId } : {}),
-        }),
-      }),
+        body: JSON.stringify(body),
+      });
+    },
     onSuccess: () => {
-      setTitle('');
-      setCreateOpen(false);
+      closeDrawer();
       queryClient.invalidateQueries({ queryKey: ['tests'] });
     },
   });
 
   const setQs = useMutation({
     mutationFn: () =>
-      apiFetch(`/admin/tests/${selectedTest}/questions`, {
+      apiFetch(`/admin/tests/${editingId}/questions`, {
         method: 'POST',
         body: JSON.stringify({ questionIds: selectedQuestions }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tests'] });
-      setSelectedTest(null);
+      queryClient.invalidateQueries({ queryKey: ['test', editingId] });
+      closeDrawer();
     },
   });
 
@@ -110,7 +197,15 @@ export function TestsPage() {
   );
   const modeOptions = useMemo(() => distinctOptions(rows.map((t) => t.mode)), [rows]);
 
-  const assignTest = rows.find((t) => t.id === selectedTest);
+  const assignTest = rows.find((t) => t.id === editingId);
+  const readOnly = drawerMode === 'view';
+  const formOpen = drawerMode === 'create' || drawerMode === 'view' || drawerMode === 'edit';
+  const formTitle =
+    drawerMode === 'view'
+      ? 'View test'
+      : drawerMode === 'edit'
+        ? 'Edit test'
+        : 'Create test draft';
 
   return (
     <section>
@@ -119,9 +214,9 @@ export function TestsPage() {
           <h1>Tests</h1>
           <p>Build and publish formal/practice tests</p>
         </div>
-        {hasPermission('assessments.author') ? (
+        {canAuthor ? (
           <PageHeaderActions>
-            <button type="button" className="btn" onClick={() => setCreateOpen(true)}>
+            <button type="button" className="btn" onClick={openCreate}>
               Create draft
             </button>
           </PageHeaderActions>
@@ -197,10 +292,23 @@ export function TestsPage() {
                       <button
                         type="button"
                         className="btn btn-ghost"
-                        onClick={() => {
-                          setSelectedTest(test.id);
-                          setSelectedQuestions([]);
-                        }}
+                        onClick={() => openView(test)}
+                      >
+                        View
+                      </button>
+                      {canAuthor ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => openEdit(test)}
+                        >
+                          Edit
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => openAssign(test)}
                       >
                         Assign questions
                       </button>
@@ -223,22 +331,23 @@ export function TestsPage() {
         </div>
       </PageState>
 
-      <ContentDrawer
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        title="Create test draft"
-        size="full"
-      >
+      <ContentDrawer open={formOpen} onClose={closeDrawer} title={formTitle} size="full">
         <form
           className="stack-form"
           onSubmit={(e) => {
             e.preventDefault();
-            create.mutate();
+            if (readOnly) return;
+            save.mutate();
           }}
         >
           <div className="field">
             <label htmlFor="test-exam">Exam</label>
-            <select id="test-exam" value={examId} onChange={(e) => setExamId(e.target.value)}>
+            <select
+              id="test-exam"
+              value={examId}
+              onChange={(e) => setExamId(e.target.value)}
+              disabled={readOnly}
+            >
               <option value="">Not attached to an exam</option>
               {(exams.data ?? []).map((exam) => (
                 <option key={exam.id} value={exam.id}>
@@ -250,14 +359,24 @@ export function TestsPage() {
           </div>
           <div className="field">
             <label htmlFor="test-mode">Mode</label>
-            <select id="test-mode" value={draftMode} onChange={(e) => setDraftMode(e.target.value)}>
+            <select
+              id="test-mode"
+              value={draftMode}
+              onChange={(e) => setDraftMode(e.target.value)}
+              disabled={readOnly}
+            >
               <option value="practice">Practice</option>
               <option value="formal">Formal</option>
             </select>
           </div>
           <div className="field">
             <label htmlFor="test-pricing">Pricing</label>
-            <select id="test-pricing" value={draftPricing} onChange={(e) => setDraftPricing(e.target.value)}>
+            <select
+              id="test-pricing"
+              value={draftPricing}
+              onChange={(e) => setDraftPricing(e.target.value)}
+              disabled={readOnly}
+            >
               <option value="free">Free</option>
               <option value="paid">Paid</option>
             </select>
@@ -270,6 +389,8 @@ export function TestsPage() {
               min={1}
               value={durationMinutes}
               onChange={(e) => setDurationMinutes(e.target.value)}
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           <div className="field">
@@ -279,17 +400,43 @@ export function TestsPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
-          <button type="submit" className="btn">
-            Create draft
-          </button>
+          {drawerMode === 'view' && detail.data?.questions ? (
+            <div className="field">
+              <label>Assigned questions</label>
+              <ul className="queue-list">
+                {detail.data.questions.length === 0 ? (
+                  <li className="muted">None assigned yet</li>
+                ) : (
+                  detail.data.questions.map((q) => (
+                    <li key={q.questionId}>{q.question.prompt}</li>
+                  ))
+                )}
+              </ul>
+            </div>
+          ) : null}
+          {drawerMode === 'view' && canAuthor ? (
+            <button type="button" className="btn" onClick={() => setDrawerMode('edit')}>
+              Edit test
+            </button>
+          ) : null}
+          {!readOnly ? (
+            <button type="submit" className="btn" disabled={save.isPending}>
+              {drawerMode === 'edit' ? 'Save changes' : 'Create draft'}
+            </button>
+          ) : null}
+          {save.error instanceof Error ? (
+            <p className="error">{save.error.message}</p>
+          ) : null}
         </form>
       </ContentDrawer>
 
       <ContentDrawer
-        open={Boolean(selectedTest)}
-        onClose={() => setSelectedTest(null)}
+        open={drawerMode === 'assign'}
+        onClose={closeDrawer}
         title={assignTest ? `Assign questions — ${assignTest.title}` : 'Assign questions'}
         size="full"
       >

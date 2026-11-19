@@ -14,6 +14,8 @@ import { TableFilterBar } from '../../../shared/ui/TableFilterBar';
 
 type Kind = 'news' | 'awareness' | 'fact' | 'interview';
 
+type DrawerMode = 'create' | 'view' | 'edit';
+
 type Category = {
   id: string;
   title: string;
@@ -32,6 +34,21 @@ type Item = {
   summary: string | null;
   pricing: string;
   featured: boolean;
+  // Extended fields returned by list
+  body?: string | null;
+  byline?: string | null;
+  readingMinutes?: number | null;
+  tagsJson?: string | null;
+  highlightsJson?: string | null;
+  imageUrl?: string | null;
+  explanation?: string | null;
+  quizId?: string | null;
+  schema?: string | null;
+  summaryChipsJson?: string | null;
+  entriesJson?: string | null;
+  prompt?: string | null;
+  modelAnswer?: string | null;
+  iconKey?: string | null;
 };
 
 const INTERVIEW_PRESETS = [
@@ -74,6 +91,47 @@ function awarenessEntries(text: string) {
   });
 }
 
+/** Parse JSON string array → comma-separated string */
+function jsonArrayToCsv(json?: string | null): string {
+  try {
+    const parsed = JSON.parse(json ?? '[]') as unknown;
+    return Array.isArray(parsed) ? parsed.join(', ') : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Parse JSON string array → newline-separated string */
+function jsonArrayToLines(json?: string | null): string {
+  try {
+    const parsed = JSON.parse(json ?? '[]') as unknown;
+    return Array.isArray(parsed) ? parsed.join('\n') : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Parse entriesJson array → "label|value" lines */
+function entriesJsonToLines(json?: string | null): string {
+  try {
+    const parsed = JSON.parse(json ?? '[]') as unknown;
+    if (!Array.isArray(parsed)) return '';
+    return parsed
+      .map((e: unknown) => {
+        if (typeof e === 'object' && e !== null) {
+          const entry = e as { label?: unknown; value?: unknown };
+          const lbl = String(entry.label ?? '');
+          const val = String(entry.value ?? '');
+          return lbl === val ? lbl : `${lbl}|${val}`;
+        }
+        return String(e);
+      })
+      .join('\n');
+  } catch {
+    return '';
+  }
+}
+
 export function EditorialPage({
   kind,
   title,
@@ -86,7 +144,11 @@ export function EditorialPage({
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [itemOpen, setItemOpen] = useState(false);
+  const [itemMode, setItemMode] = useState<DrawerMode>('create');
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [categoryMode, setCategoryMode] = useState<DrawerMode>('create');
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [search, setSearch] = useState('');
   const [lifecycle, setLifecycle] = useState('');
   const [catFilter, setCatFilter] = useState('');
@@ -133,53 +195,211 @@ export function EditorialPage({
     queryClient.invalidateQueries({ queryKey: ['content-categories', kind] });
   };
 
-  const createItem = useMutation({
-    mutationFn: () => {
-      const selected = (categories.data ?? []).find((row) => row.id === categoryId);
-      const sentence = itemTitle.trim();
-      const payload: Record<string, unknown> = {
-        kind,
-        title: kind === 'interview' ? prompt.trim() || sentence : sentence,
-        pricing,
-        featured,
-      };
-      if (kind !== 'awareness') {
-        if (!categoryId) throw new Error('Choose a category. Publish it before learners can see the chip.');
+  // ── Item form helpers ──────────────────────────────────────────────────────
+
+  const resetItemForm = () => {
+    setEditingItem(null);
+    setItemTitle('');
+    setCategoryId('');
+    setExcerpt('');
+    setBody('');
+    setByline('');
+    setReadingMinutes('3');
+    setTags('');
+    setHighlights('');
+    setImageUrl('');
+    setFeatured(false);
+    setPricing('free');
+    setExplanation('');
+    setQuizId('');
+    setSchema('pairs');
+    setChips('');
+    setEntries('');
+    setPrompt('');
+    setModelAnswer('');
+    setIconKey(kind === 'awareness' ? 'book' : '');
+  };
+
+  const fillItemForm = (item: Item) => {
+    setEditingItem(item);
+    setItemTitle(item.title);
+    setCategoryId(item.categoryId ?? '');
+    setExcerpt(item.summary ?? '');
+    setPricing(item.pricing || 'free');
+    setFeatured(item.featured);
+
+    if (kind === 'news') {
+      setBody(jsonArrayToLines(item.body));
+      setByline(item.byline ?? '');
+      setReadingMinutes(String(item.readingMinutes ?? 3));
+      setImageUrl(item.imageUrl ?? '');
+      setTags(jsonArrayToCsv(item.tagsJson));
+      setHighlights(jsonArrayToLines(item.highlightsJson));
+    }
+    if (kind === 'awareness') {
+      setSchema(item.schema ?? 'pairs');
+      setIconKey(item.iconKey ?? 'book');
+      setChips(jsonArrayToCsv(item.summaryChipsJson));
+      setEntries(entriesJsonToLines(item.entriesJson));
+    }
+    if (kind === 'fact') {
+      setExplanation(item.explanation ?? '');
+      setQuizId(item.quizId ?? '');
+    }
+    if (kind === 'interview') {
+      setPrompt(item.prompt ?? '');
+      setModelAnswer(item.modelAnswer ?? '');
+    }
+  };
+
+  const openItemCreate = () => {
+    resetItemForm();
+    setItemMode('create');
+    setFormError(null);
+    setItemOpen(true);
+  };
+
+  const openItemView = (item: Item) => {
+    fillItemForm(item);
+    setItemMode('view');
+    setFormError(null);
+    setItemOpen(true);
+  };
+
+  const openItemEdit = (item: Item) => {
+    fillItemForm(item);
+    setItemMode('edit');
+    setFormError(null);
+    setItemOpen(true);
+  };
+
+  const closeItemDrawer = () => {
+    setItemOpen(false);
+    setItemMode('create');
+    setEditingItem(null);
+  };
+
+  // ── Category form helpers ──────────────────────────────────────────────────
+
+  const resetCategoryForm = () => {
+    setEditingCategory(null);
+    setCatTitle('');
+    setCatSummary('');
+    setCatPricing('free');
+    setCatIcon(kind === 'fact' ? 'bulb' : kind === 'news' ? 'news' : 'users');
+    setCatPreset('');
+  };
+
+  const fillCategoryForm = (cat: Category) => {
+    setEditingCategory(cat);
+    setCatTitle(cat.title);
+    setCatSummary(cat.summary ?? '');
+    setCatPricing(cat.pricing || 'free');
+    setCatIcon(cat.iconKey ?? '');
+    setCatPreset('');
+  };
+
+  const openCategoryCreate = () => {
+    resetCategoryForm();
+    setCategoryMode('create');
+    setFormError(null);
+    setCategoryOpen(true);
+  };
+
+  const openCategoryView = (cat: Category) => {
+    fillCategoryForm(cat);
+    setCategoryMode('view');
+    setFormError(null);
+    setCategoryOpen(true);
+  };
+
+  const openCategoryEdit = (cat: Category) => {
+    fillCategoryForm(cat);
+    setCategoryMode('edit');
+    setFormError(null);
+    setCategoryOpen(true);
+  };
+
+  const closeCategoryDrawer = () => {
+    setCategoryOpen(false);
+    setCategoryMode('create');
+    setEditingCategory(null);
+  };
+
+  // ── Mutations ──────────────────────────────────────────────────────────────
+
+  const buildItemPayload = (includeKind: boolean) => {
+    const selected = (categories.data ?? []).find((row) => row.id === categoryId);
+    const sentence = itemTitle.trim();
+    const payload: Record<string, unknown> = {
+      pricing,
+      featured,
+    };
+    if (includeKind) payload.kind = kind;
+    payload.title = kind === 'interview' ? prompt.trim() || sentence : sentence;
+
+    if (kind !== 'awareness') {
+      if (categoryId) {
         payload.categoryId = categoryId;
         payload.category = selected?.title;
       }
-      if (kind === 'news') {
-        payload.summary = excerpt.trim() || undefined;
-        payload.body = JSON.stringify(linesOf(body));
-        payload.byline = byline.trim() || undefined;
-        payload.readingMinutes = Number(readingMinutes) || 3;
-        payload.tagsJson = JSON.stringify(csv(tags));
-        payload.highlightsJson = JSON.stringify(linesOf(highlights));
-        payload.imageUrl = imageUrl.trim() || undefined;
-      }
-      if (kind === 'awareness') {
-        payload.summary = excerpt.trim() || undefined;
-        payload.iconKey = iconKey.trim() || 'book';
-        payload.schema = schema;
-        payload.summaryChipsJson = JSON.stringify(csv(chips));
-        payload.entriesJson = JSON.stringify(awarenessEntries(entries));
-      }
-      if (kind === 'fact') {
-        payload.summary = sentence;
-        payload.explanation = explanation.trim() || undefined;
-        payload.quizId = quizId.trim() || undefined;
-      }
-      if (kind === 'interview') {
-        payload.prompt = prompt.trim();
-        payload.modelAnswer = modelAnswer.trim() || undefined;
+    }
+    if (kind === 'news') {
+      payload.summary = excerpt.trim() || undefined;
+      payload.body = JSON.stringify(linesOf(body));
+      payload.byline = byline.trim() || undefined;
+      payload.readingMinutes = Number(readingMinutes) || 3;
+      payload.tagsJson = JSON.stringify(csv(tags));
+      payload.highlightsJson = JSON.stringify(linesOf(highlights));
+      payload.imageUrl = imageUrl.trim() || undefined;
+    }
+    if (kind === 'awareness') {
+      payload.summary = excerpt.trim() || undefined;
+      payload.iconKey = iconKey.trim() || 'book';
+      payload.schema = schema;
+      payload.summaryChipsJson = JSON.stringify(csv(chips));
+      payload.entriesJson = JSON.stringify(awarenessEntries(entries));
+    }
+    if (kind === 'fact') {
+      payload.summary = sentence;
+      payload.explanation = explanation.trim() || undefined;
+      payload.quizId = quizId.trim() || undefined;
+    }
+    if (kind === 'interview') {
+      payload.prompt = prompt.trim();
+      payload.modelAnswer = modelAnswer.trim() || undefined;
+    }
+    return payload;
+  };
+
+  const createItem = useMutation({
+    mutationFn: () => {
+      if (kind !== 'awareness' && !categoryId) {
+        throw new Error('Choose a category. Publish it before learners can see the chip.');
       }
       return apiFetch('/admin/editorial', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(buildItemPayload(true)),
       });
     },
     onSuccess: () => {
-      setItemOpen(false);
+      closeItemDrawer();
+      setFormError(null);
+      refresh();
+    },
+    onError: (error) => {
+      setFormError(error instanceof Error ? error.message : 'Could not save');
+    },
+  });
+
+  const updateItem = useMutation({
+    mutationFn: () =>
+      apiFetch(`/admin/editorial/${editingItem!.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(buildItemPayload(false)),
+      }),
+    onSuccess: () => {
+      closeItemDrawer();
       setFormError(null);
       refresh();
     },
@@ -204,10 +424,28 @@ export function EditorialPage({
       });
     },
     onSuccess: () => {
-      setCategoryOpen(false);
-      setCatTitle('');
-      setCatSummary('');
-      setCatPreset('');
+      closeCategoryDrawer();
+      setFormError(null);
+      refresh();
+    },
+    onError: (error) => {
+      setFormError(error instanceof Error ? error.message : 'Could not save the category');
+    },
+  });
+
+  const updateCategory = useMutation({
+    mutationFn: () =>
+      apiFetch(`/admin/content-categories/${editingCategory!.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title: catTitle.trim(),
+          summary: catSummary.trim() || undefined,
+          pricing: catPricing,
+          iconKey: catIcon.trim() || undefined,
+        }),
+      }),
+    onSuccess: () => {
+      closeCategoryDrawer();
       setFormError(null);
       refresh();
     },
@@ -225,6 +463,8 @@ export function EditorialPage({
       apiFetch(`/admin/content-categories/${id}/publish`, { method: 'POST' }),
     onSuccess: refresh,
   });
+
+  // ── Filtering ──────────────────────────────────────────────────────────────
 
   const rows = list.data ?? [];
   const filtered = useMemo(() => {
@@ -244,7 +484,31 @@ export function EditorialPage({
     [rows],
   );
   const canCreate = hasPermission('content.create');
+  const canEdit = hasPermission('content.edit');
   const canPublish = hasPermission('content.publish');
+
+  const itemReadOnly = itemMode === 'view';
+  const catReadOnly = categoryMode === 'view';
+
+  const itemDrawerTitle =
+    itemMode === 'view'
+      ? `View ${kind === 'news' ? 'article' : kind === 'fact' ? 'fact' : kind === 'interview' ? 'question' : 'topic'}`
+      : itemMode === 'edit'
+        ? `Edit ${kind === 'news' ? 'article' : kind === 'fact' ? 'fact' : kind === 'interview' ? 'question' : 'topic'}`
+        : kind === 'news'
+          ? 'Add article'
+          : kind === 'fact'
+            ? 'Add fact'
+            : kind === 'interview'
+              ? 'Add question'
+              : 'Add topic';
+
+  const catDrawerTitle =
+    categoryMode === 'view'
+      ? 'View category'
+      : categoryMode === 'edit'
+        ? 'Edit category'
+        : 'Add category';
 
   return (
     <section>
@@ -256,11 +520,11 @@ export function EditorialPage({
         {canCreate ? (
           <PageHeaderActions>
             {kind !== 'awareness' ? (
-              <button type="button" className="btn btn-ghost" onClick={() => setCategoryOpen(true)}>
+              <button type="button" className="btn btn-ghost" onClick={openCategoryCreate}>
                 Add category
               </button>
             ) : null}
-            <button type="button" className="btn" onClick={() => setItemOpen(true)}>
+            <button type="button" className="btn" onClick={openItemCreate}>
               {kind === 'news'
                 ? 'Add article'
                 : kind === 'fact'
@@ -282,7 +546,7 @@ export function EditorialPage({
                 <th>Id</th>
                 <th>Pricing</th>
                 <th>State</th>
-                <th></th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -301,7 +565,23 @@ export function EditorialPage({
                     <td>
                       <StatusPill value={row.lifecycle} />
                     </td>
-                    <td>
+                    <td className="action-row">
+                      <button
+                        className="btn btn-ghost"
+                        type="button"
+                        onClick={() => openCategoryView(row)}
+                      >
+                        View
+                      </button>
+                      {canEdit ? (
+                        <button
+                          className="btn btn-ghost"
+                          type="button"
+                          onClick={() => openCategoryEdit(row)}
+                        >
+                          Edit
+                        </button>
+                      ) : null}
                       {row.lifecycle !== 'published' && canPublish ? (
                         <button
                           className="btn btn-ghost"
@@ -362,7 +642,7 @@ export function EditorialPage({
                 <th>Category</th>
                 <th>Pricing</th>
                 <th>State</th>
-                <th></th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -381,7 +661,23 @@ export function EditorialPage({
                     <td>
                       <StatusPill value={row.lifecycle} />
                     </td>
-                    <td>
+                    <td className="action-row">
+                      <button
+                        className="btn btn-ghost"
+                        type="button"
+                        onClick={() => openItemView(row)}
+                      >
+                        View
+                      </button>
+                      {canEdit ? (
+                        <button
+                          className="btn btn-ghost"
+                          type="button"
+                          onClick={() => openItemEdit(row)}
+                        >
+                          Edit
+                        </button>
+                      ) : null}
                       {row.lifecycle !== 'published' && canPublish ? (
                         <button
                           className="btn btn-ghost"
@@ -400,16 +696,23 @@ export function EditorialPage({
         </div>
       </PageState>
 
-      <ContentDrawer open={categoryOpen} onClose={() => setCategoryOpen(false)} title="Add category">
+      {/* ── Category drawer ───────────────────────────────────────────────── */}
+      <ContentDrawer
+        open={categoryOpen}
+        onClose={closeCategoryDrawer}
+        title={catDrawerTitle}
+      >
         <form
           className="stack-form"
           onSubmit={(event) => {
             event.preventDefault();
+            if (catReadOnly) return;
             setFormError(null);
-            createCategory.mutate();
+            if (categoryMode === 'edit') updateCategory.mutate();
+            else createCategory.mutate();
           }}
         >
-          {kind === 'interview' ? (
+          {kind === 'interview' && categoryMode === 'create' ? (
             <div className="field">
               <label htmlFor="cat-preset">Topic</label>
               <select
@@ -439,6 +742,8 @@ export function EditorialPage({
               onChange={(event) => setCatTitle(event.target.value)}
               required
               minLength={2}
+              readOnly={catReadOnly}
+              disabled={catReadOnly}
             />
           </div>
           <div className="field">
@@ -447,46 +752,65 @@ export function EditorialPage({
               id="cat-summary"
               value={catSummary}
               onChange={(event) => setCatSummary(event.target.value)}
+              readOnly={catReadOnly}
+              disabled={catReadOnly}
             />
           </div>
           <div className="field">
             <label htmlFor="cat-pricing">Pricing</label>
-            <select id="cat-pricing" value={catPricing} onChange={(event) => setCatPricing(event.target.value)}>
+            <select
+              id="cat-pricing"
+              value={catPricing}
+              onChange={(event) => setCatPricing(event.target.value)}
+              disabled={catReadOnly}
+            >
               <option value="free">Free</option>
               <option value="paid">Paid</option>
             </select>
           </div>
           <div className="field">
             <label htmlFor="cat-icon">Icon name</label>
-            <input id="cat-icon" value={catIcon} onChange={(event) => setCatIcon(event.target.value)} />
+            <input
+              id="cat-icon"
+              value={catIcon}
+              onChange={(event) => setCatIcon(event.target.value)}
+              readOnly={catReadOnly}
+              disabled={catReadOnly}
+            />
           </div>
           {formError ? <p className="error">{formError}</p> : null}
-          <button className="btn" type="submit" disabled={createCategory.isPending}>
-            Save category
-          </button>
+          {categoryMode === 'view' && canEdit ? (
+            <button type="button" className="btn" onClick={() => setCategoryMode('edit')}>
+              Edit category
+            </button>
+          ) : null}
+          {!catReadOnly ? (
+            <button
+              className="btn"
+              type="submit"
+              disabled={categoryMode === 'edit' ? updateCategory.isPending : createCategory.isPending}
+            >
+              {categoryMode === 'edit' ? 'Save changes' : 'Save category'}
+            </button>
+          ) : null}
         </form>
       </ContentDrawer>
 
+      {/* ── Item drawer ───────────────────────────────────────────────────── */}
       <ContentDrawer
         open={itemOpen}
-        onClose={() => setItemOpen(false)}
-        title={
-          kind === 'news'
-            ? 'Add article'
-            : kind === 'fact'
-              ? 'Add fact'
-              : kind === 'interview'
-                ? 'Add question'
-                : 'Add topic'
-        }
+        onClose={closeItemDrawer}
+        title={itemDrawerTitle}
         size="full"
       >
         <form
           className="stack-form"
           onSubmit={(event) => {
             event.preventDefault();
+            if (itemReadOnly) return;
             setFormError(null);
-            createItem.mutate();
+            if (itemMode === 'edit') updateItem.mutate();
+            else createItem.mutate();
           }}
         >
           {kind !== 'awareness' ? (
@@ -496,7 +820,8 @@ export function EditorialPage({
                 id="item-category"
                 value={categoryId}
                 onChange={(event) => setCategoryId(event.target.value)}
-                required
+                required={itemMode === 'create'}
+                disabled={itemReadOnly}
               >
                 <option value="">Choose a category</option>
                 {(categories.data ?? []).map((row) => (
@@ -515,8 +840,10 @@ export function EditorialPage({
                 id="item-title"
                 value={itemTitle}
                 onChange={(event) => setItemTitle(event.target.value)}
-                required
+                required={!itemReadOnly}
                 minLength={2}
+                readOnly={itemReadOnly}
+                disabled={itemReadOnly}
               />
             </div>
           ) : null}
@@ -525,7 +852,14 @@ export function EditorialPage({
             <>
               <div className="field">
                 <label htmlFor="item-excerpt">Excerpt</label>
-                <textarea id="item-excerpt" rows={3} value={excerpt} onChange={(event) => setExcerpt(event.target.value)} />
+                <textarea
+                  id="item-excerpt"
+                  rows={3}
+                  value={excerpt}
+                  onChange={(event) => setExcerpt(event.target.value)}
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
+                />
               </div>
               <div className="field">
                 <label htmlFor="item-body">Article</label>
@@ -535,11 +869,19 @@ export function EditorialPage({
                   value={body}
                   onChange={(event) => setBody(event.target.value)}
                   placeholder="One paragraph per line"
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
                 />
               </div>
               <div className="field">
                 <label htmlFor="item-byline">Byline</label>
-                <input id="item-byline" value={byline} onChange={(event) => setByline(event.target.value)} />
+                <input
+                  id="item-byline"
+                  value={byline}
+                  onChange={(event) => setByline(event.target.value)}
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
+                />
               </div>
               <div className="field">
                 <label htmlFor="item-minutes">Reading minutes</label>
@@ -549,6 +891,8 @@ export function EditorialPage({
                   min={1}
                   value={readingMinutes}
                   onChange={(event) => setReadingMinutes(event.target.value)}
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
                 />
               </div>
               <div className="field">
@@ -558,6 +902,8 @@ export function EditorialPage({
                   value={imageUrl}
                   onChange={(event) => setImageUrl(event.target.value)}
                   placeholder="https://"
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
                 />
               </div>
               <div className="field">
@@ -567,6 +913,8 @@ export function EditorialPage({
                   value={tags}
                   onChange={(event) => setTags(event.target.value)}
                   placeholder="policy, jobs"
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
                 />
               </div>
               <div className="field">
@@ -577,6 +925,8 @@ export function EditorialPage({
                   value={highlights}
                   onChange={(event) => setHighlights(event.target.value)}
                   placeholder="One highlight per line"
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
                 />
               </div>
             </>
@@ -586,11 +936,22 @@ export function EditorialPage({
             <>
               <div className="field">
                 <label htmlFor="item-summary">Summary</label>
-                <input id="item-summary" value={excerpt} onChange={(event) => setExcerpt(event.target.value)} />
+                <input
+                  id="item-summary"
+                  value={excerpt}
+                  onChange={(event) => setExcerpt(event.target.value)}
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
+                />
               </div>
               <div className="field">
                 <label htmlFor="item-schema">Layout</label>
-                <select id="item-schema" value={schema} onChange={(event) => setSchema(event.target.value)}>
+                <select
+                  id="item-schema"
+                  value={schema}
+                  onChange={(event) => setSchema(event.target.value)}
+                  disabled={itemReadOnly}
+                >
                   <option value="pairs">Pairs, such as state and capital</option>
                   <option value="list">List</option>
                   <option value="article">Article</option>
@@ -603,6 +964,8 @@ export function EditorialPage({
                   value={chips}
                   onChange={(event) => setChips(event.target.value)}
                   placeholder="28 states, 8 union territories"
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
                 />
               </div>
               <div className="field">
@@ -613,12 +976,20 @@ export function EditorialPage({
                   value={entries}
                   onChange={(event) => setEntries(event.target.value)}
                   placeholder={'Bihar | Patna\nJharkhand | Ranchi'}
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
                 />
                 <p className="field-hint">One entry per line. Use Label | Value. The app does not sort these.</p>
               </div>
               <div className="field">
                 <label htmlFor="item-icon">Icon name</label>
-                <input id="item-icon" value={iconKey} onChange={(event) => setIconKey(event.target.value)} />
+                <input
+                  id="item-icon"
+                  value={iconKey}
+                  onChange={(event) => setIconKey(event.target.value)}
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
+                />
               </div>
             </>
           ) : null}
@@ -632,6 +1003,8 @@ export function EditorialPage({
                   rows={4}
                   value={explanation}
                   onChange={(event) => setExplanation(event.target.value)}
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
                 />
               </div>
               <div className="field">
@@ -641,6 +1014,8 @@ export function EditorialPage({
                   value={quizId}
                   onChange={(event) => setQuizId(event.target.value)}
                   placeholder="Leave empty if there is no quiz"
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
                 />
                 <p className="field-hint">Must be a published test id. A wrong id opens a broken quiz.</p>
               </div>
@@ -656,7 +1031,9 @@ export function EditorialPage({
                   rows={3}
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
-                  required
+                  required={!itemReadOnly}
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
                 />
               </div>
               <div className="field">
@@ -666,6 +1043,8 @@ export function EditorialPage({
                   rows={5}
                   value={modelAnswer}
                   onChange={(event) => setModelAnswer(event.target.value)}
+                  readOnly={itemReadOnly}
+                  disabled={itemReadOnly}
                 />
               </div>
             </>
@@ -673,7 +1052,12 @@ export function EditorialPage({
 
           <div className="field">
             <label htmlFor="item-pricing">Pricing</label>
-            <select id="item-pricing" value={pricing} onChange={(event) => setPricing(event.target.value)}>
+            <select
+              id="item-pricing"
+              value={pricing}
+              onChange={(event) => setPricing(event.target.value)}
+              disabled={itemReadOnly}
+            >
               <option value="free">Free</option>
               <option value="paid">Paid</option>
             </select>
@@ -684,14 +1068,26 @@ export function EditorialPage({
                 type="checkbox"
                 checked={featured}
                 onChange={(event) => setFeatured(event.target.checked)}
+                disabled={itemReadOnly}
               />
               Featured
             </label>
           ) : null}
           {formError ? <p className="error">{formError}</p> : null}
-          <button className="btn" type="submit" disabled={createItem.isPending}>
-            Save draft
-          </button>
+          {itemMode === 'view' && canEdit ? (
+            <button type="button" className="btn" onClick={() => setItemMode('edit')}>
+              Edit {kind === 'news' ? 'article' : kind === 'fact' ? 'fact' : kind === 'interview' ? 'question' : 'topic'}
+            </button>
+          ) : null}
+          {!itemReadOnly ? (
+            <button
+              className="btn"
+              type="submit"
+              disabled={itemMode === 'edit' ? updateItem.isPending : createItem.isPending}
+            >
+              {itemMode === 'edit' ? 'Save changes' : 'Save draft'}
+            </button>
+          ) : null}
         </form>
       </ContentDrawer>
     </section>

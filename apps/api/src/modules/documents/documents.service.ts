@@ -30,6 +30,20 @@ export class DocumentsService {
     });
   }
 
+  async getTemplate(id: string) {
+    const row = await this.prisma.documentTemplate.findUnique({
+      where: { id },
+    });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Document template not found',
+        fieldErrors: {},
+      });
+    }
+    return row;
+  }
+
   async createTemplate(data: {
     key: string;
     title: string;
@@ -49,6 +63,25 @@ export class DocumentsService {
         locale: data.locale ?? 'en',
         lifecycle: ContentLifecycle.published,
         publishedAt: new Date(),
+      },
+    });
+  }
+
+  async updateTemplate(
+    id: string,
+    data: {
+      title?: string;
+      documentType?: DocumentType;
+      locale?: string;
+    },
+  ) {
+    await this.getTemplate(id);
+    return this.prisma.documentTemplate.update({
+      where: { id },
+      data: {
+        title: data.title,
+        documentType: data.documentType,
+        locale: data.locale,
       },
     });
   }

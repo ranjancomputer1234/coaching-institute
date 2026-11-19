@@ -21,9 +21,16 @@ type Campaign = {
   failureReason: string | null;
   category?: string;
   recipientCount?: number;
+  body?: string | null;
+  audienceRef?: string | null;
+  actionLabel?: string | null;
+  targetKind?: string | null;
+  targetRef?: string | null;
 };
 
 type SendResult = Campaign & { inboxCreated?: number };
+
+type DrawerMode = 'create' | 'view' | 'edit';
 
 const CATEGORIES = ['classes', 'tests', 'news', 'offers', 'system'] as const;
 
@@ -32,6 +39,8 @@ export function NotificationsPage() {
   const queryClient = useQueryClient();
   const canSend = hasPermission('notifications.send_bulk');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [mode, setMode] = useState<DrawerMode>('create');
+  const [editing, setEditing] = useState<Campaign | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [audience, setAudience] = useState('single');
@@ -50,6 +59,54 @@ export function NotificationsPage() {
     queryFn: () => apiFetch<Campaign[]>('/admin/notifications'),
   });
 
+  const resetForm = () => {
+    setEditing(null);
+    setTitle('');
+    setBody('');
+    setAudience('single');
+    setAudienceRef('');
+    setCategory('system');
+    setActionLabel('');
+    setTargetKind('');
+    setTargetRef('');
+  };
+
+  const fillForm = (row: Campaign) => {
+    setEditing(row);
+    setTitle(row.title);
+    setBody(row.body ?? '');
+    setAudience(row.audience);
+    setAudienceRef(row.audienceRef ?? '');
+    setCategory(row.category ?? 'system');
+    setActionLabel(row.actionLabel ?? '');
+    setTargetKind(row.targetKind ?? '');
+    setTargetRef(row.targetRef ?? '');
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setMode('create');
+    setDrawerOpen(true);
+  };
+
+  const openView = (row: Campaign) => {
+    fillForm(row);
+    setMode('view');
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (row: Campaign) => {
+    fillForm(row);
+    setMode('edit');
+    setDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    resetForm();
+    setMode('create');
+  };
+
   const create = useMutation({
     mutationFn: () =>
       apiFetch('/admin/notifications', {
@@ -66,14 +123,28 @@ export function NotificationsPage() {
         }),
       }),
     onSuccess: () => {
-      setTitle('');
-      setBody('');
-      setAudienceRef('');
-      setCategory('system');
-      setActionLabel('');
-      setTargetKind('');
-      setTargetRef('');
-      setDrawerOpen(false);
+      closeDrawer();
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+
+  const update = useMutation({
+    mutationFn: () =>
+      apiFetch(`/admin/notifications/${editing!.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title,
+          body,
+          audience,
+          audienceRef: audienceRef || undefined,
+          category,
+          actionLabel: actionLabel || undefined,
+          targetKind: targetKind || undefined,
+          targetRef: targetRef || undefined,
+        }),
+      }),
+    onSuccess: () => {
+      closeDrawer();
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
@@ -109,6 +180,15 @@ export function NotificationsPage() {
     [rows],
   );
 
+  const readOnly = mode === 'view';
+  const saveError = mode === 'edit' ? update.error : create.error;
+  const drawerTitle =
+    mode === 'view'
+      ? 'View campaign'
+      : mode === 'edit'
+        ? 'Edit campaign'
+        : 'New notification campaign';
+
   return (
     <section>
       <div className="page-header">
@@ -117,7 +197,7 @@ export function NotificationsPage() {
           <p>Send delivers to each learner's in-app inbox. Push delivery needs a configured provider.</p>
         </div>
         <PageHeaderActions>
-          <button type="button" className="btn" onClick={() => setDrawerOpen(true)}>
+          <button type="button" className="btn" onClick={openCreate}>
             New campaign
           </button>
         </PageHeaderActions>
@@ -166,7 +246,7 @@ export function NotificationsPage() {
                 <th>Status</th>
                 <th>Recipients</th>
                 <th>Provider</th>
-                <th></th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -187,7 +267,23 @@ export function NotificationsPage() {
                     </td>
                     <td>{row.recipientCount ?? 0}</td>
                     <td>{row.providerStatus}</td>
-                    <td>
+                    <td className="action-row">
+                      <button
+                        className="btn btn-ghost"
+                        type="button"
+                        onClick={() => openView(row)}
+                      >
+                        View
+                      </button>
+                      {row.status === 'draft' ? (
+                        <button
+                          className="btn btn-ghost"
+                          type="button"
+                          onClick={() => openEdit(row)}
+                        >
+                          Edit
+                        </button>
+                      ) : null}
                       {canSend ? (
                         <button
                           className="btn btn-ghost"
@@ -212,15 +308,17 @@ export function NotificationsPage() {
 
       <ContentDrawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        title="New notification campaign"
+        onClose={closeDrawer}
+        title={drawerTitle}
         size="full"
       >
         <form
           className="stack-form"
           onSubmit={(event) => {
             event.preventDefault();
-            create.mutate();
+            if (readOnly) return;
+            if (mode === 'edit') update.mutate();
+            else create.mutate();
           }}
         >
           <div className="field">
@@ -230,6 +328,8 @@ export function NotificationsPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           <div className="field">
@@ -238,7 +338,9 @@ export function NotificationsPage() {
               id="note-body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              required
+              required={mode === 'create'}
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           <div className="field">
@@ -247,6 +349,7 @@ export function NotificationsPage() {
               id="note-audience"
               value={audience}
               onChange={(e) => setAudience(e.target.value)}
+              disabled={readOnly}
             >
               <option value="single">Single learner</option>
               <option value="segment">Segment</option>
@@ -260,6 +363,8 @@ export function NotificationsPage() {
               value={audienceRef}
               placeholder="learner id or batch id"
               onChange={(e) => setAudienceRef(e.target.value)}
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           <div className="field">
@@ -268,6 +373,7 @@ export function NotificationsPage() {
               id="note-category"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
+              disabled={readOnly}
             >
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -283,6 +389,8 @@ export function NotificationsPage() {
               value={actionLabel}
               placeholder="e.g. Join class"
               onChange={(e) => setActionLabel(e.target.value)}
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           <div className="field">
@@ -292,6 +400,8 @@ export function NotificationsPage() {
               value={targetKind}
               placeholder="e.g. course, test, live"
               onChange={(e) => setTargetKind(e.target.value)}
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           <div className="field">
@@ -301,11 +411,27 @@ export function NotificationsPage() {
               value={targetRef}
               placeholder="target id"
               onChange={(e) => setTargetRef(e.target.value)}
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
-          <button className="btn" type="submit" disabled={create.isPending}>
-            Save draft
-          </button>
+          {saveError instanceof Error ? (
+            <p className="error">{saveError.message}</p>
+          ) : null}
+          {mode === 'view' && editing?.status === 'draft' ? (
+            <button type="button" className="btn" onClick={() => setMode('edit')}>
+              Edit campaign
+            </button>
+          ) : null}
+          {!readOnly ? (
+            <button
+              className="btn"
+              type="submit"
+              disabled={mode === 'edit' ? update.isPending : create.isPending}
+            >
+              {mode === 'edit' ? 'Save changes' : 'Save draft'}
+            </button>
+          ) : null}
         </form>
       </ContentDrawer>
     </section>

@@ -30,8 +30,15 @@ import {
   CreateSupportDto,
   CreateTemplateDto,
   ReconcileOrderDto,
+  UpdateCampaignDto,
+  UpdateContentCategoryDto,
+  UpdateCouponDto,
+  UpdateEditorialDto,
   UpdateLegalPageDto,
+  UpdateLiveClassDto,
+  UpdateProductDto,
   UpdateSupportDto,
+  UpdateTemplateDto,
   UpsertSettingDto,
 } from './platform.dto';
 
@@ -190,6 +197,112 @@ export class PlatformService {
     return row;
   }
 
+  async getEditorial(id: string) {
+    const item = await this.prisma.editorialItem.findUnique({ where: { id } });
+    if (!item) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Editorial item not found',
+        fieldErrors: {},
+      });
+    }
+    return item;
+  }
+
+  async updateEditorial(id: string, dto: UpdateEditorialDto, actor: Actor) {
+    await this.getEditorial(id);
+    const item = await this.prisma.editorialItem.update({
+      where: { id },
+      data: {
+        title: dto.title,
+        summary: dto.summary,
+        body: dto.body,
+        category: dto.category,
+        categoryId: dto.categoryId,
+        pricing: dto.pricing,
+        ...(dto.pricing
+          ? {
+              commercialMode:
+                dto.pricing === 'paid'
+                  ? CourseCommercialMode.paid
+                  : CourseCommercialMode.free,
+            }
+          : {}),
+        featured: dto.featured,
+        imageUrl: dto.imageUrl,
+        iconKey: dto.iconKey,
+        byline: dto.byline,
+        readingMinutes: dto.readingMinutes,
+        explanation: dto.explanation,
+        quizId: dto.quizId,
+        schema: dto.schema,
+        prompt: dto.prompt,
+        modelAnswer: dto.modelAnswer,
+        entriesJson: dto.entriesJson,
+        summaryChipsJson: dto.summaryChipsJson,
+        tagsJson: dto.tagsJson,
+        highlightsJson: dto.highlightsJson,
+        revision: { increment: 1 },
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'editorial.update',
+      resourceType: 'EditorialItem',
+      resourceId: id,
+      after: { title: item.title },
+    });
+    return item;
+  }
+
+  async getContentCategory(id: string) {
+    const row = await this.prisma.contentCategory.findUnique({ where: { id } });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Category not found',
+        fieldErrors: {},
+      });
+    }
+    return row;
+  }
+
+  async updateContentCategory(
+    id: string,
+    dto: UpdateContentCategoryDto,
+    actor: Actor,
+  ) {
+    await this.getContentCategory(id);
+    const row = await this.prisma.contentCategory.update({
+      where: { id },
+      data: {
+        title: dto.title,
+        summary: dto.summary,
+        pricing: dto.pricing,
+        ...(dto.pricing
+          ? {
+              commercialMode:
+                dto.pricing === 'paid'
+                  ? CourseCommercialMode.paid
+                  : CourseCommercialMode.free,
+            }
+          : {}),
+        iconKey: dto.iconKey,
+        sortOrder: dto.sortOrder,
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'content_category.update',
+      resourceType: 'ContentCategory',
+      resourceId: id,
+      after: { title: row.title },
+    });
+    return row;
+  }
+
   async publishEditorial(id: string, actor: Actor) {
     const before = await this.prisma.editorialItem.findUnique({
       where: { id },
@@ -229,6 +342,77 @@ export class PlatformService {
       },
       orderBy: { startsAt: 'asc' },
     });
+  }
+
+  async getLiveClass(id: string) {
+    const row = await this.prisma.liveClass.findUnique({
+      where: { id },
+      include: { batch: { select: { id: true, name: true } } },
+    });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Live class not found',
+        fieldErrors: {},
+      });
+    }
+    return row;
+  }
+
+  async updateLiveClass(id: string, dto: UpdateLiveClassDto, actor: Actor) {
+    await this.getLiveClass(id);
+    if (dto.batchId) {
+      const batch = await this.prisma.batch.findUnique({
+        where: { id: dto.batchId },
+        select: { id: true },
+      });
+      if (!batch) {
+        throw new BadRequestException({
+          code: 'INVALID_BATCH',
+          message: 'Batch not found',
+          fieldErrors: { batchId: 'Unknown batch' },
+        });
+      }
+    }
+    const learnerIds =
+      dto.learnerIds !== undefined ? [...new Set(dto.learnerIds)] : undefined;
+    if (learnerIds?.length) {
+      const found = await this.prisma.learner.count({
+        where: { id: { in: learnerIds } },
+      });
+      if (found !== learnerIds.length) {
+        throw new BadRequestException({
+          code: 'INVALID_LEARNERS',
+          message: 'One or more learners were not found',
+          fieldErrors: { learnerIds: 'Unknown learner id(s)' },
+        });
+      }
+    }
+    const row = await this.prisma.liveClass.update({
+      where: { id },
+      data: {
+        title: dto.title,
+        startsAt: dto.startsAt ? new Date(dto.startsAt) : undefined,
+        endsAt: dto.endsAt ? new Date(dto.endsAt) : undefined,
+        courseId: dto.courseId,
+        batchId: dto.batchId,
+        ...(learnerIds !== undefined
+          ? { audienceLearnerIdsJson: JSON.stringify(learnerIds) }
+          : {}),
+        hostName: dto.hostName,
+        capacity: dto.capacity,
+      },
+      include: { batch: { select: { id: true, name: true } } },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'live.update',
+      resourceType: 'LiveClass',
+      resourceId: id,
+      after: { title: row.title, batchId: row.batchId },
+    });
+    return row;
   }
 
   private parseAudienceIds(json: string | null | undefined): string[] {
@@ -470,6 +654,20 @@ export class PlatformService {
     });
   }
 
+  async getTemplate(id: string) {
+    const row = await this.prisma.notificationTemplate.findUnique({
+      where: { id },
+    });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Template not found',
+        fieldErrors: {},
+      });
+    }
+    return row;
+  }
+
   async createTemplate(dto: CreateTemplateDto, actor: Actor) {
     const latest = await this.prisma.notificationTemplate.findFirst({
       where: { key: dto.key },
@@ -496,11 +694,47 @@ export class PlatformService {
     return row;
   }
 
+  async updateTemplate(id: string, dto: UpdateTemplateDto, actor: Actor) {
+    await this.getTemplate(id);
+    const row = await this.prisma.notificationTemplate.update({
+      where: { id },
+      data: {
+        title: dto.title,
+        body: dto.body,
+        channel: dto.channel,
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'notification.template_update',
+      resourceType: 'NotificationTemplate',
+      resourceId: id,
+      after: { title: row.title },
+    });
+    return row;
+  }
+
   listCampaigns() {
     return this.prisma.notificationCampaign.findMany({
       include: { template: true },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async getCampaign(id: string) {
+    const row = await this.prisma.notificationCampaign.findUnique({
+      where: { id },
+      include: { template: true },
+    });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Campaign not found',
+        fieldErrors: {},
+      });
+    }
+    return row;
   }
 
   async createCampaign(dto: CreateCampaignDto, actor: Actor) {
@@ -530,6 +764,47 @@ export class PlatformService {
         audience: row.audience,
         category: row.category,
       },
+    });
+    return row;
+  }
+
+  async updateCampaign(id: string, dto: UpdateCampaignDto, actor: Actor) {
+    const existing = await this.getCampaign(id);
+    if (existing.status !== 'draft') {
+      throw new BadRequestException({
+        code: 'CAMPAIGN_LOCKED',
+        message: 'Only draft campaigns can be edited',
+        fieldErrors: {},
+      });
+    }
+    const row = await this.prisma.notificationCampaign.update({
+      where: { id },
+      data: {
+        title: dto.title,
+        body: dto.body,
+        audience: dto.audience,
+        audienceRef: dto.audienceRef,
+        templateId: dto.templateId,
+        category: dto.category,
+        actionLabel:
+          dto.actionLabel !== undefined
+            ? dto.actionLabel.trim() || null
+            : undefined,
+        targetKind:
+          dto.targetKind !== undefined
+            ? dto.targetKind.trim() || null
+            : undefined,
+        targetRef:
+          dto.targetRef !== undefined ? dto.targetRef.trim() || null : undefined,
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'notification.campaign_update',
+      resourceType: 'NotificationCampaign',
+      resourceId: id,
+      after: { title: row.title, audience: row.audience },
     });
     return row;
   }
@@ -687,6 +962,18 @@ export class PlatformService {
     return this.prisma.product.findMany({ orderBy: { updatedAt: 'desc' } });
   }
 
+  async getProduct(id: string) {
+    const row = await this.prisma.product.findUnique({ where: { id } });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Product not found',
+        fieldErrors: {},
+      });
+    }
+    return row;
+  }
+
   async createProduct(dto: CreateProductDto, actor: Actor) {
     const row = await this.prisma.product.create({
       data: {
@@ -707,8 +994,42 @@ export class PlatformService {
     return row;
   }
 
+  async updateProduct(id: string, dto: UpdateProductDto, actor: Actor) {
+    await this.getProduct(id);
+    const row = await this.prisma.product.update({
+      where: { id },
+      data: {
+        sku: dto.sku,
+        title: dto.title,
+        pricePaise: dto.pricePaise,
+        courseId: dto.courseId,
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'product.update',
+      resourceType: 'Product',
+      resourceId: id,
+      after: { sku: row.sku, pricePaise: row.pricePaise },
+    });
+    return row;
+  }
+
   listCoupons() {
     return this.prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } });
+  }
+
+  async getCoupon(id: string) {
+    const row = await this.prisma.coupon.findUnique({ where: { id } });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Coupon not found',
+        fieldErrors: {},
+      });
+    }
+    return row;
   }
 
   async createCoupon(dto: CreateCouponDto, actor: Actor) {
@@ -733,6 +1054,28 @@ export class PlatformService {
       resourceType: 'Coupon',
       resourceId: row.id,
       after: { code: row.code },
+    });
+    return row;
+  }
+
+  async updateCoupon(id: string, dto: UpdateCouponDto, actor: Actor) {
+    await this.getCoupon(id);
+    const row = await this.prisma.coupon.update({
+      where: { id },
+      data: {
+        code: dto.code ? dto.code.toUpperCase() : undefined,
+        percentOff: dto.percentOff,
+        amountOffPaise: dto.amountOffPaise,
+        active: dto.active,
+      },
+    });
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'coupon.update',
+      resourceType: 'Coupon',
+      resourceId: id,
+      after: { code: row.code, active: row.active },
     });
     return row;
   }

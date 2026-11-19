@@ -86,6 +86,16 @@ export function LearnersPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
 
+  // Edit-profile state
+  const [editMode, setEditMode] = useState(false);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editCity, setEditCity] = useState('');
+
+  const canEditProfile = hasPermission('users.update');
+
   const list = useQuery({
     queryKey: ['learners', q],
     queryFn: () =>
@@ -131,6 +141,35 @@ export function LearnersPage() {
       queryClient.invalidateQueries({ queryKey: ['learner-activity', selectedId] });
     },
   });
+
+  const updateLearner = useMutation({
+    mutationFn: () =>
+      apiFetch(`/admin/learners/${selectedId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          firstName: editFirstName.trim() || undefined,
+          lastName: editLastName.trim() || undefined,
+          email: editEmail.trim() || undefined,
+          phone: editPhone.trim() || undefined,
+          city: editCity.trim() || undefined,
+        }),
+      }),
+    onSuccess: () => {
+      setEditMode(false);
+      queryClient.invalidateQueries({ queryKey: ['learners'] });
+      queryClient.invalidateQueries({ queryKey: ['learner', selectedId] });
+    },
+  });
+
+  const enterEdit = () => {
+    if (!detail.data) return;
+    setEditFirstName(detail.data.firstName);
+    setEditLastName(detail.data.lastName);
+    setEditEmail(detail.data.email ?? '');
+    setEditPhone(detail.data.phone ?? '');
+    setEditCity(detail.data.city ?? '');
+    setEditMode(true);
+  };
 
   const rows = useMemo(() => list.data ?? [], [list.data]);
   const filteredRows = useMemo(() => {
@@ -217,7 +256,7 @@ export function LearnersPage() {
                   <tr
                     key={learner.id}
                     className={selectedId === learner.id ? 'row-selected' : ''}
-                    onClick={() => setSelectedId(learner.id)}
+                    onClick={() => { setSelectedId(learner.id); setEditMode(false); }}
                   >
                     <td>
                       {learner.firstName} {learner.lastName}
@@ -253,22 +292,93 @@ export function LearnersPage() {
                 </strong>
               </p>
               <p className="muted small">{detail.data.id}</p>
-              <dl className="drawer-dl learner-profile-dl">
-                <dt>Email</dt>
-                <dd>{detail.data.email ?? '—'}</dd>
-                <dt>Phone</dt>
-                <dd>{detail.data.phone ?? '—'}</dd>
-                <dt>City</dt>
-                <dd>{detail.data.city ?? '—'}</dd>
-                <dt>Batch</dt>
-                <dd>{detail.data.batch?.name ?? '—'}</dd>
-                <dt>State</dt>
-                <dd>
-                  <StatusPill value={detail.data.accountState} />
-                </dd>
-              </dl>
 
-              {summary ? (
+              {editMode ? (
+                <form
+                  className="stack-form"
+                  onSubmit={(e) => { e.preventDefault(); updateLearner.mutate(); }}
+                >
+                  <div className="field">
+                    <label htmlFor="edit-firstName">First name</label>
+                    <input
+                      id="edit-firstName"
+                      value={editFirstName}
+                      onChange={(e) => setEditFirstName(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="edit-lastName">Last name</label>
+                    <input
+                      id="edit-lastName"
+                      value={editLastName}
+                      onChange={(e) => setEditLastName(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="edit-email">Email</label>
+                    <input
+                      id="edit-email"
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="edit-phone">Phone</label>
+                    <input
+                      id="edit-phone"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="edit-city">City</label>
+                    <input
+                      id="edit-city"
+                      value={editCity}
+                      onChange={(e) => setEditCity(e.target.value)}
+                    />
+                  </div>
+                  {updateLearner.error instanceof Error ? (
+                    <p className="error">{updateLearner.error.message}</p>
+                  ) : null}
+                  <div className="action-row">
+                    <button type="submit" className="btn" disabled={updateLearner.isPending}>
+                      Save changes
+                    </button>
+                    <button type="button" className="btn btn-ghost" onClick={() => setEditMode(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <dl className="drawer-dl learner-profile-dl">
+                    <dt>Email</dt>
+                    <dd>{detail.data.email ?? '—'}</dd>
+                    <dt>Phone</dt>
+                    <dd>{detail.data.phone ?? '—'}</dd>
+                    <dt>City</dt>
+                    <dd>{detail.data.city ?? '—'}</dd>
+                    <dt>Batch</dt>
+                    <dd>{detail.data.batch?.name ?? '—'}</dd>
+                    <dt>State</dt>
+                    <dd>
+                      <StatusPill value={detail.data.accountState} />
+                    </dd>
+                  </dl>
+
+                  {canEditProfile ? (
+                    <div className="action-row">
+                      <button type="button" className="btn btn-ghost" onClick={enterEdit}>
+                        Edit profile
+                      </button>
+                    </div>
+                  ) : null}
+                </>
+              )}
+
+              {!editMode && summary ? (
                 <div className="activity-summary">
                   <div className="activity-stat">
                     <strong>{summary.enrolledCourses}</strong>
@@ -289,22 +399,24 @@ export function LearnersPage() {
                 </div>
               ) : null}
 
-              <p className="muted small">
-                Member since{' '}
-                {summary
-                  ? formatWhen(summary.memberSince)
-                  : detail.data.createdAt
-                    ? formatWhen(detail.data.createdAt)
-                    : '—'}
-                {summary?.lastActiveAt ? (
-                  <>
-                    <br />
-                    Last active {formatWhen(summary.lastActiveAt)}
-                  </>
-                ) : null}
-              </p>
+              {!editMode ? (
+                <p className="muted small">
+                  Member since{' '}
+                  {summary
+                    ? formatWhen(summary.memberSince)
+                    : detail.data.createdAt
+                      ? formatWhen(detail.data.createdAt)
+                      : '—'}
+                  {summary?.lastActiveAt ? (
+                    <>
+                      <br />
+                      Last active {formatWhen(summary.lastActiveAt)}
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
 
-              {detail.data.enrollments && detail.data.enrollments.length > 0 ? (
+              {!editMode && detail.data.enrollments && detail.data.enrollments.length > 0 ? (
                 <div className="learner-enrollments">
                   <h3>Enrollments</h3>
                   <ul>
@@ -318,7 +430,7 @@ export function LearnersPage() {
                 </div>
               ) : null}
 
-              {hasPermission('users.suspend') ? (
+              {!editMode && hasPermission('users.suspend') ? (
                 <div className="action-row">
                   {detail.data.accountState === 'suspended' ? (
                     <button
@@ -348,31 +460,35 @@ export function LearnersPage() {
                 </div>
               ) : null}
 
-              <h3 className="activity-heading">Recent activity</h3>
-              {activity.isLoading ? (
-                <p className="muted small">Loading activity…</p>
-              ) : activity.error ? (
-                <p className="error small">Could not load activity</p>
-              ) : activity.data && activity.data.items.length > 0 ? (
-                <ul className="activity-feed">
-                  {activity.data.items.map((item) => (
-                    <li key={item.id}>
-                      <div className="activity-feed-meta">
-                        <span className={`activity-kind kind-${item.kind}`}>
-                          {kindLabel(item.kind)}
-                        </span>
-                        <time dateTime={item.occurredAt}>{formatWhen(item.occurredAt)}</time>
-                      </div>
-                      <p className="activity-feed-title">{item.title}</p>
-                      {item.detail ? (
-                        <p className="muted small activity-feed-detail">{item.detail}</p>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="muted small">No activity recorded yet for this learner.</p>
-              )}
+              {!editMode ? (
+                <>
+                  <h3 className="activity-heading">Recent activity</h3>
+                  {activity.isLoading ? (
+                    <p className="muted small">Loading activity…</p>
+                  ) : activity.error ? (
+                    <p className="error small">Could not load activity</p>
+                  ) : activity.data && activity.data.items.length > 0 ? (
+                    <ul className="activity-feed">
+                      {activity.data.items.map((item) => (
+                        <li key={item.id}>
+                          <div className="activity-feed-meta">
+                            <span className={`activity-kind kind-${item.kind}`}>
+                              {kindLabel(item.kind)}
+                            </span>
+                            <time dateTime={item.occurredAt}>{formatWhen(item.occurredAt)}</time>
+                          </div>
+                          <p className="activity-feed-title">{item.title}</p>
+                          {item.detail ? (
+                            <p className="muted small activity-feed-detail">{item.detail}</p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted small">No activity recorded yet for this learner.</p>
+                  )}
+                </>
+              ) : null}
             </>
           ) : (
             <p className="error">Failed to load learner</p>

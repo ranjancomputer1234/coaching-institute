@@ -16,16 +16,36 @@ type Exam = {
   id: string;
   title: string;
   summary: string | null;
+  description?: string | null;
   commercialMode: string;
   lifecycle: string;
   learnerCount: number;
+  iconKey?: string | null;
+  relatedExamsJson?: string | null;
   _count?: { tests: number };
 };
+
+type DrawerMode = 'create' | 'view' | 'edit';
+
+function parseRelated(json?: string | null) {
+  try {
+    const parsed = JSON.parse(json || '[]') as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((x): x is string => typeof x === 'string').join(', ')
+      : '';
+  } catch {
+    return '';
+  }
+}
 
 export function ExamsPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
+  const canCreate = hasPermission('content.create');
+  const canEdit = hasPermission('content.edit');
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<DrawerMode>('create');
+  const [editing, setEditing] = useState<Exam | null>(null);
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
@@ -41,29 +61,78 @@ export function ExamsPage() {
     queryFn: () => apiFetch<Exam[]>('/admin/exams'),
   });
 
-  const create = useMutation({
-    mutationFn: () =>
-      apiFetch('/admin/exams', {
+  const resetForm = () => {
+    setEditing(null);
+    setTitle('');
+    setSummary('');
+    setDescription('');
+    setCommercialMode('free');
+    setIconKey('target');
+    setLearnerCount('0');
+    setRelated('');
+  };
+
+  const fillForm = (exam: Exam) => {
+    setEditing(exam);
+    setTitle(exam.title);
+    setSummary(exam.summary ?? '');
+    setDescription(exam.description ?? '');
+    setCommercialMode(exam.commercialMode || 'free');
+    setIconKey(exam.iconKey ?? 'target');
+    setLearnerCount(String(exam.learnerCount ?? 0));
+    setRelated(parseRelated(exam.relatedExamsJson));
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setMode('create');
+    setOpen(true);
+  };
+
+  const openView = (exam: Exam) => {
+    fillForm(exam);
+    setMode('view');
+    setOpen(true);
+  };
+
+  const openEdit = (exam: Exam) => {
+    fillForm(exam);
+    setMode('edit');
+    setOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setOpen(false);
+    resetForm();
+  };
+
+  const save = useMutation({
+    mutationFn: () => {
+      const body = {
+        title: title.trim(),
+        summary: summary.trim() || undefined,
+        description: description.trim() || undefined,
+        commercialMode,
+        iconKey: iconKey.trim() || undefined,
+        learnerCount: Number(learnerCount) || 0,
+        relatedExams: related
+          .split(',')
+          .map((part) => part.trim())
+          .filter(Boolean),
+      };
+      if (mode === 'edit' && editing) {
+        return apiFetch(`/admin/exams/${editing.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+      }
+      return apiFetch('/admin/exams', {
         method: 'POST',
-        body: JSON.stringify({
-          title: title.trim(),
-          summary: summary.trim() || undefined,
-          description: description.trim() || undefined,
-          commercialMode,
-          iconKey: iconKey.trim() || undefined,
-          learnerCount: Number(learnerCount) || 0,
-          relatedExams: related
-            .split(',')
-            .map((part) => part.trim())
-            .filter(Boolean),
-        }),
-      }),
+        body: JSON.stringify(body),
+      });
+    },
     onSuccess: () => {
-      setTitle('');
-      setSummary('');
-      setDescription('');
-      setRelated('');
-      setOpen(false);
+      closeDrawer();
       queryClient.invalidateQueries({ queryKey: ['exams'] });
     },
   });
@@ -84,6 +153,10 @@ export function ExamsPage() {
     [rows],
   );
 
+  const readOnly = mode === 'view';
+  const drawerTitle =
+    mode === 'view' ? 'View exam' : mode === 'edit' ? 'Edit exam' : 'Add exam';
+
   return (
     <section>
       <div className="page-header">
@@ -91,9 +164,9 @@ export function ExamsPage() {
           <h1>Competitive exams</h1>
           <p>Published exams and their tests. Explore tiles do not fill this list.</p>
         </div>
-        {hasPermission('content.create') ? (
+        {canCreate ? (
           <PageHeaderActions>
-            <button type="button" className="btn" onClick={() => setOpen(true)}>
+            <button type="button" className="btn" onClick={openCreate}>
               Add exam
             </button>
           </PageHeaderActions>
@@ -130,7 +203,7 @@ export function ExamsPage() {
                 <th>Tests</th>
                 <th>Learners</th>
                 <th>State</th>
-                <th></th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -143,7 +216,23 @@ export function ExamsPage() {
                   <td>
                     <StatusPill value={exam.lifecycle} />
                   </td>
-                  <td>
+                  <td className="action-row">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => openView(exam)}
+                    >
+                      View
+                    </button>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => openEdit(exam)}
+                      >
+                        Edit
+                      </button>
+                    ) : null}
                     {exam.lifecycle !== 'published' && hasPermission('content.publish') ? (
                       <button type="button" className="btn" onClick={() => publish.mutate(exam.id)}>
                         Publish
@@ -156,36 +245,69 @@ export function ExamsPage() {
           </table>
         </div>
       </PageState>
-      <ContentDrawer open={open} onClose={() => setOpen(false)} title="Add exam">
+      <ContentDrawer open={open} onClose={closeDrawer} title={drawerTitle}>
         <form
           className="stack-form"
           onSubmit={(event) => {
             event.preventDefault();
-            create.mutate();
+            if (readOnly) return;
+            save.mutate();
           }}
         >
           <div className="field">
             <label htmlFor="exam-title">Title</label>
-            <input id="exam-title" value={title} onChange={(event) => setTitle(event.target.value)} required minLength={2} />
+            <input
+              id="exam-title"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              required
+              minLength={2}
+              readOnly={readOnly}
+              disabled={readOnly}
+            />
           </div>
           <div className="field">
             <label htmlFor="exam-summary">Summary</label>
-            <input id="exam-summary" value={summary} onChange={(event) => setSummary(event.target.value)} />
+            <input
+              id="exam-summary"
+              value={summary}
+              onChange={(event) => setSummary(event.target.value)}
+              readOnly={readOnly}
+              disabled={readOnly}
+            />
           </div>
           <div className="field">
             <label htmlFor="exam-description">Description</label>
-            <textarea id="exam-description" rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
+            <textarea
+              id="exam-description"
+              rows={4}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              readOnly={readOnly}
+              disabled={readOnly}
+            />
           </div>
           <div className="field">
             <label htmlFor="exam-pricing">Pricing</label>
-            <select id="exam-pricing" value={commercialMode} onChange={(event) => setCommercialMode(event.target.value)}>
+            <select
+              id="exam-pricing"
+              value={commercialMode}
+              onChange={(event) => setCommercialMode(event.target.value)}
+              disabled={readOnly}
+            >
               <option value="free">Free</option>
               <option value="paid">Paid</option>
             </select>
           </div>
           <div className="field">
             <label htmlFor="exam-icon">Icon name</label>
-            <input id="exam-icon" value={iconKey} onChange={(event) => setIconKey(event.target.value)} />
+            <input
+              id="exam-icon"
+              value={iconKey}
+              onChange={(event) => setIconKey(event.target.value)}
+              readOnly={readOnly}
+              disabled={readOnly}
+            />
           </div>
           <div className="field">
             <label htmlFor="exam-learners">Learner count</label>
@@ -195,6 +317,8 @@ export function ExamsPage() {
               min={0}
               value={learnerCount}
               onChange={(event) => setLearnerCount(event.target.value)}
+              readOnly={readOnly}
+              disabled={readOnly}
             />
           </div>
           <div className="field">
@@ -204,13 +328,22 @@ export function ExamsPage() {
               value={related}
               onChange={(event) => setRelated(event.target.value)}
               placeholder="Banking, Railways"
+              readOnly={readOnly}
+              disabled={readOnly}
             />
             <p className="field-hint">Up to two labels are shown on the card.</p>
           </div>
-          {create.error instanceof Error ? <p className="error">{create.error.message}</p> : null}
-          <button className="btn" type="submit" disabled={create.isPending}>
-            Save draft
-          </button>
+          {mode === 'view' && canEdit ? (
+            <button type="button" className="btn" onClick={() => setMode('edit')}>
+              Edit exam
+            </button>
+          ) : null}
+          {!readOnly ? (
+            <button className="btn" type="submit" disabled={save.isPending}>
+              {mode === 'edit' ? 'Save changes' : 'Save draft'}
+            </button>
+          ) : null}
+          {save.error instanceof Error ? <p className="error">{save.error.message}</p> : null}
         </form>
       </ContentDrawer>
     </section>

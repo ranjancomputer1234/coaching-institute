@@ -23,8 +23,15 @@ import {
   CreateSupportDto,
   CreateTemplateDto,
   ReconcileOrderDto,
+  UpdateCampaignDto,
+  UpdateContentCategoryDto,
+  UpdateCouponDto,
+  UpdateEditorialDto,
   UpdateLegalPageDto,
+  UpdateLiveClassDto,
+  UpdateProductDto,
   UpdateSupportDto,
+  UpdateTemplateDto,
   UpsertSettingDto,
 } from './platform.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -47,10 +54,26 @@ export class PlatformController {
     return this.platform.listEditorial(kind);
   }
 
+  @Get('editorial/:id')
+  @RequirePermissions('content.edit')
+  getEditorial(@Param('id') id: string) {
+    return this.platform.getEditorial(id);
+  }
+
   @Post('editorial')
   @RequirePermissions('content.create')
   createEditorial(@Body() dto: CreateEditorialDto, @CurrentUser() user: Actor) {
     return this.platform.createEditorial(dto, user);
+  }
+
+  @Patch('editorial/:id')
+  @RequirePermissions('content.edit')
+  updateEditorial(
+    @Param('id') id: string,
+    @Body() dto: UpdateEditorialDto,
+    @CurrentUser() user: Actor,
+  ) {
+    return this.platform.updateEditorial(id, dto, user);
   }
 
   @Post('editorial/:id/publish')
@@ -65,6 +88,12 @@ export class PlatformController {
     return this.platform.listContentCategories(kind);
   }
 
+  @Get('content-categories/:id')
+  @RequirePermissions('content.edit')
+  getContentCategory(@Param('id') id: string) {
+    return this.platform.getContentCategory(id);
+  }
+
   @Post('content-categories')
   @RequirePermissions('content.create')
   createContentCategory(
@@ -72,6 +101,16 @@ export class PlatformController {
     @CurrentUser() user: Actor,
   ) {
     return this.platform.createContentCategory(dto, user);
+  }
+
+  @Patch('content-categories/:id')
+  @RequirePermissions('content.edit')
+  updateContentCategory(
+    @Param('id') id: string,
+    @Body() dto: UpdateContentCategoryDto,
+    @CurrentUser() user: Actor,
+  ) {
+    return this.platform.updateContentCategory(id, dto, user);
   }
 
   @Post('content-categories/:id/publish')
@@ -86,10 +125,26 @@ export class PlatformController {
     return this.platform.listLiveClasses();
   }
 
+  @Get('live-classes/:id')
+  @RequirePermissions('live.schedule')
+  getLive(@Param('id') id: string) {
+    return this.platform.getLiveClass(id);
+  }
+
   @Post('live-classes')
   @RequirePermissions('live.schedule')
   createLive(@Body() dto: CreateLiveClassDto, @CurrentUser() user: Actor) {
     return this.platform.createLiveClass(dto, user);
+  }
+
+  @Patch('live-classes/:id')
+  @RequirePermissions('live.schedule')
+  updateLive(
+    @Param('id') id: string,
+    @Body() dto: UpdateLiveClassDto,
+    @CurrentUser() user: Actor,
+  ) {
+    return this.platform.updateLiveClass(id, dto, user);
   }
 
   @Post('live-classes/:id/schedule')
@@ -104,10 +159,26 @@ export class PlatformController {
     return this.platform.listTemplates();
   }
 
+  @Get('notification-templates/:id')
+  @RequirePermissions('notifications.send_single')
+  getTemplate(@Param('id') id: string) {
+    return this.platform.getTemplate(id);
+  }
+
   @Post('notification-templates')
   @RequirePermissions('notifications.send_single')
   createTemplate(@Body() dto: CreateTemplateDto, @CurrentUser() user: Actor) {
     return this.platform.createTemplate(dto, user);
+  }
+
+  @Patch('notification-templates/:id')
+  @RequirePermissions('notifications.send_single')
+  updateTemplate(
+    @Param('id') id: string,
+    @Body() dto: UpdateTemplateDto,
+    @CurrentUser() user: Actor,
+  ) {
+    return this.platform.updateTemplate(id, dto, user);
   }
 
   @Get('notifications')
@@ -116,10 +187,26 @@ export class PlatformController {
     return this.platform.listCampaigns();
   }
 
+  @Get('notifications/:id')
+  @RequirePermissions('notifications.send_single')
+  getCampaign(@Param('id') id: string) {
+    return this.platform.getCampaign(id);
+  }
+
   @Post('notifications')
   @RequirePermissions('notifications.send_single')
   createCampaign(@Body() dto: CreateCampaignDto, @CurrentUser() user: Actor) {
     return this.platform.createCampaign(dto, user);
+  }
+
+  @Patch('notifications/:id')
+  @RequirePermissions('notifications.send_single')
+  updateCampaign(
+    @Param('id') id: string,
+    @Body() dto: UpdateCampaignDto,
+    @CurrentUser() user: Actor,
+  ) {
+    return this.platform.updateCampaign(id, dto, user);
   }
 
   @Post('notifications/:id/send')
@@ -134,10 +221,26 @@ export class PlatformController {
     return this.platform.listProducts();
   }
 
+  @Get('products/:id')
+  @RequirePermissions('payments.read')
+  getProduct(@Param('id') id: string) {
+    return this.platform.getProduct(id);
+  }
+
   @Post('products')
   @RequirePermissions('payments.read')
   createProduct(@Body() dto: CreateProductDto, @CurrentUser() user: Actor) {
     return this.platform.createProduct(dto, user);
+  }
+
+  @Patch('products/:id')
+  @RequirePermissions('payments.read')
+  updateProduct(
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+    @CurrentUser() user: Actor,
+  ) {
+    return this.platform.updateProduct(id, dto, user);
   }
 
   @Get('coupons')
@@ -146,10 +249,26 @@ export class PlatformController {
     return this.platform.listCoupons();
   }
 
+  @Get('coupons/:id')
+  @RequirePermissions('payments.read')
+  getCoupon(@Param('id') id: string) {
+    return this.platform.getCoupon(id);
+  }
+
   @Post('coupons')
   @RequirePermissions('payments.read')
   createCoupon(@Body() dto: CreateCouponDto, @CurrentUser() user: Actor) {
     return this.platform.createCoupon(dto, user);
+  }
+
+  @Patch('coupons/:id')
+  @RequirePermissions('payments.read')
+  updateCoupon(
+    @Param('id') id: string,
+    @Body() dto: UpdateCouponDto,
+    @CurrentUser() user: Actor,
+  ) {
+    return this.platform.updateCoupon(id, dto, user);
   }
 
   @Get('orders')

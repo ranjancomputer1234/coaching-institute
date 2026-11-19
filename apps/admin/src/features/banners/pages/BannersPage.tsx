@@ -81,6 +81,7 @@ export function BannersPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<Banner | null>(null);
+  const [drawerMode, setDrawerMode] = useState<'create' | 'view' | 'edit'>('create');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [campaignName, setCampaignName] = useState('');
   const [title, setTitle] = useState('');
@@ -114,10 +115,11 @@ export function BannersPage() {
 
   const openCreate = () => {
     resetForm();
+    setDrawerMode('create');
     setDrawerOpen(true);
   };
 
-  const openEdit = (banner: Banner) => {
+  const fillForm = (banner: Banner) => {
     setEditing(banner);
     setCampaignName(banner.campaignName);
     setTitle(banner.title);
@@ -135,6 +137,17 @@ export function BannersPage() {
       setCourseId('');
     }
     setFormError(null);
+  };
+
+  const openView = (banner: Banner) => {
+    fillForm(banner);
+    setDrawerMode('view');
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (banner: Banner) => {
+    fillForm(banner);
+    setDrawerMode('edit');
     setDrawerOpen(true);
   };
 
@@ -345,6 +358,13 @@ export function BannersPage() {
                       <StatusPill value={banner.lifecycle} />
                     </td>
                     <td className="action-row">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => openView(banner)}
+                      >
+                        View
+                      </button>
                       {canManage ? (
                         <button
                           type="button"
@@ -385,32 +405,41 @@ export function BannersPage() {
       <ContentDrawer
         open={drawerOpen}
         onClose={closeDrawer}
-        title={editing ? 'Edit banner' : 'Add banner'}
+        title={
+          drawerMode === 'view'
+            ? 'View banner'
+            : drawerMode === 'edit'
+              ? 'Edit banner'
+              : 'Add banner'
+        }
       >
         <form
           className="stack-form"
           onSubmit={(event) => {
             event.preventDefault();
+            if (drawerMode === 'view') return;
             setFormError(null);
             save.mutate();
           }}
         >
-          <div className="field">
-            <label htmlFor="banner-file">Banner image</label>
-            <input
-              id="banner-file"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = '';
-                void onPickFile(file);
-              }}
-            />
-            <p className="field-hint">
-              Landscape, about 1080×432. The home carousel crops the edges and does not add a title.
-            </p>
-          </div>
+          {drawerMode !== 'view' ? (
+            <div className="field">
+              <label htmlFor="banner-file">Banner image</label>
+              <input
+                id="banner-file"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = '';
+                  void onPickFile(file);
+                }}
+              />
+              <p className="field-hint">
+                Landscape, about 1080×432. The home carousel crops the edges and does not add a title.
+              </p>
+            </div>
+          ) : null}
           {isHttpsImage(imageUrl) ? (
             <img className="banner-thumb" src={imageUrl.trim()} alt="" />
           ) : null}
@@ -422,6 +451,8 @@ export function BannersPage() {
               onChange={(event) => setImageUrl(event.target.value)}
               placeholder="https://"
               required
+              readOnly={drawerMode === 'view'}
+              disabled={drawerMode === 'view'}
             />
           </div>
           <div className="field">
@@ -432,6 +463,8 @@ export function BannersPage() {
               onChange={(event) => setCampaignName(event.target.value)}
               required
               minLength={2}
+              readOnly={drawerMode === 'view'}
+              disabled={drawerMode === 'view'}
             />
           </div>
           <div className="field">
@@ -442,6 +475,8 @@ export function BannersPage() {
               onChange={(event) => setTitle(event.target.value)}
               required
               minLength={2}
+              readOnly={drawerMode === 'view'}
+              disabled={drawerMode === 'view'}
             />
             <p className="field-hint">Used in this list only. It is not drawn on the phone.</p>
           </div>
@@ -452,6 +487,8 @@ export function BannersPage() {
               value={altText}
               onChange={(event) => setAltText(event.target.value)}
               placeholder="What the picture says"
+              readOnly={drawerMode === 'view'}
+              disabled={drawerMode === 'view'}
             />
           </div>
           <div className="field">
@@ -460,6 +497,7 @@ export function BannersPage() {
               id="banner-target"
               value={target}
               onChange={(event) => setTarget(event.target.value)}
+              disabled={drawerMode === 'view'}
             >
               {targetOptions.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -476,6 +514,8 @@ export function BannersPage() {
                 value={courseId}
                 onChange={(event) => setCourseId(event.target.value)}
                 required
+                readOnly={drawerMode === 'view'}
+                disabled={drawerMode === 'view'}
               />
             </div>
           ) : null}
@@ -487,13 +527,26 @@ export function BannersPage() {
               min={0}
               value={priority}
               onChange={(event) => setPriority(event.target.value)}
+              readOnly={drawerMode === 'view'}
+              disabled={drawerMode === 'view'}
             />
             <p className="field-hint">Higher numbers are sent first. Only the hero placement is shown.</p>
           </div>
           {formError ? <p className="error">{formError}</p> : null}
-          <button type="submit" className="btn" disabled={save.isPending || uploading}>
-            {uploading ? 'Uploading image…' : editing ? 'Save banner' : 'Add banner'}
-          </button>
+          {drawerMode === 'view' && canManage ? (
+            <button type="button" className="btn" onClick={() => setDrawerMode('edit')}>
+              Edit banner
+            </button>
+          ) : null}
+          {drawerMode !== 'view' ? (
+            <button type="submit" className="btn" disabled={save.isPending || uploading}>
+              {uploading
+                ? 'Uploading image…'
+                : drawerMode === 'edit'
+                  ? 'Save banner'
+                  : 'Add banner'}
+            </button>
+          ) : null}
         </form>
       </ContentDrawer>
     </section>

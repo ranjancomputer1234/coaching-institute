@@ -69,3 +69,18 @@ export class CreateTemplateDto {
   @IsString()
   locale?: string;
 }
+
+export class UpdateDocumentTemplateDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  title?: string;
+
+  @IsOptional()
+  @IsEnum(DocumentType)
+  documentType?: DocumentType;
+
+  @IsOptional()
+  @IsString()
+  locale?: string;
+}
