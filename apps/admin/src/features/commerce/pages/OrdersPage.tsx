@@ -7,6 +7,7 @@ import {
   filterBySearch,
   filterWhen,
 } from '../../../shared/lib/tableFilters';
+import { startRazorpayCheckout } from '../../../shared/payments/razorpayCheckout';
 import { ContentDrawer } from '../../../shared/ui/ContentDrawer';
 import { PageHeaderActions } from '../../../shared/ui/PageHeaderActions';
 import { PageState, StatusPill } from '../../../shared/ui/PageState';
@@ -29,6 +30,16 @@ type ReconcileResult = {
   accessGranted: boolean;
 };
 
+type PaymentsConfig = {
+  configured: boolean;
+  keyId: string | null;
+  provider: string;
+};
+
+function isPaid(status: string) {
+  return status === 'paid' || status === 'paid_manual' || status === 'paid_razorpay';
+}
+
 export function OrdersPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -40,8 +51,17 @@ export function OrdersPage() {
   const [status, setStatus] = useState('');
   const [provider, setProvider] = useState('');
   const [lastReconcile, setLastReconcile] = useState<ReconcileResult | null>(null);
+  const [payNote, setPayNote] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
 
   const canReconcile = hasPermission('payments.refund_approve');
+  const canPay = hasPermission('payments.read');
+
+  const paymentsConfig = useQuery({
+    queryKey: ['payments-config'],
+    queryFn: () => apiFetch<PaymentsConfig>('/payments/config'),
+  });
 
   const list = useQuery({
     queryKey: ['orders'],
@@ -75,13 +95,42 @@ export function OrdersPage() {
     },
   });
 
+  const pay = useMutation({
+    mutationFn: async (order: Order) => {
+      setPayingOrderId(order.id);
+      setPayError(null);
+      setPayNote(null);
+      return startRazorpayCheckout({
+        orderId: order.id,
+        name: 'Ranjan Computer Institute',
+        description: order.product?.title ?? 'Course purchase',
+      });
+    },
+    onSuccess: (result) => {
+      setPayNote(
+        result.alreadyPaid
+          ? 'Order was already marked paid.'
+          : result.accessGranted
+            ? `Payment verified. Course access granted.`
+            : `Payment verified (${result.paymentId}).`,
+      );
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['entitlements'] });
+    },
+    onError: (error) => {
+      setPayError(error instanceof Error ? error.message : 'Payment failed');
+    },
+    onSettled: () => setPayingOrderId(null),
+  });
+
   const rows = list.data ?? [];
   const filtered = useMemo(() => {
     let next = rows;
     next = filterBySearch(
       next,
       search,
-      (r) => `${r.product?.title ?? ''} ${r.product?.sku ?? ''} ${r.learnerId} ${r.externalReference ?? ''}`,
+      (r) =>
+        `${r.product?.title ?? ''} ${r.product?.sku ?? ''} ${r.learnerId} ${r.externalReference ?? ''}`,
     );
     next = filterWhen(next, status, (r, v) => r.status === v);
     next = filterWhen(next, provider, (r, v) => r.providerStatus === v);
@@ -97,14 +146,17 @@ export function OrdersPage() {
     [rows],
   );
 
+  const razorpayReady = Boolean(paymentsConfig.data?.configured);
+
   return (
     <section>
       <div className="page-header">
         <div>
           <h1>Orders & payments</h1>
           <p>
-            Orders stay pending until you record a real gateway reference. Paid
-            reconcile grants course access when the product has a course ID.
+            Create a pending order, then collect payment with Razorpay Standard
+            Checkout. Verified payments grant course access when the product has
+            a course ID. Manual reconcile remains available as a fallback.
           </p>
         </div>
         <PageHeaderActions>
@@ -114,11 +166,21 @@ export function OrdersPage() {
         </PageHeaderActions>
       </div>
 
+      <div className="panel" style={{ marginBottom: '1rem' }}>
+        <p className="muted" style={{ margin: 0 }}>
+          Razorpay:{' '}
+          {paymentsConfig.isLoading
+            ? 'Checking…'
+            : razorpayReady
+              ? `Configured (${paymentsConfig.data?.keyId ?? 'key present'})`
+              : 'Not configured — set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on the API'}
+        </p>
+      </div>
+
       {lastReconcile ? (
         <div className="panel" style={{ marginBottom: '1rem' }}>
           <p>
-            Last reconcile:{' '}
-            <StatusPill value={lastReconcile.order.status} />
+            Last reconcile: <StatusPill value={lastReconcile.order.status} />
             {' · '}
             {lastReconcile.accessGranted
               ? `Access granted${lastReconcile.entitlement?.courseId ? ` for course ${lastReconcile.entitlement.courseId}` : ''}`
@@ -126,6 +188,9 @@ export function OrdersPage() {
           </p>
         </div>
       ) : null}
+
+      {payNote ? <p className="muted">{payNote}</p> : null}
+      {payError ? <p className="error">{payError}</p> : null}
 
       <PageState
         loading={list.isLoading}
@@ -190,8 +255,18 @@ export function OrdersPage() {
                       <StatusPill value={row.status} />
                     </td>
                     <td>{row.providerStatus}</td>
-                    <td>
-                      {canReconcile && row.status !== 'paid_manual' ? (
+                    <td className="action-row">
+                      {canPay && !isPaid(row.status) ? (
+                        <button
+                          className="btn"
+                          type="button"
+                          disabled={!razorpayReady || pay.isPending}
+                          onClick={() => pay.mutate(row)}
+                        >
+                          {payingOrderId === row.id ? 'Opening…' : 'Pay with Razorpay'}
+                        </button>
+                      ) : null}
+                      {canReconcile && !isPaid(row.status) ? (
                         <button
                           className="btn btn-ghost"
                           type="button"
@@ -242,14 +317,16 @@ export function OrdersPage() {
             />
           </div>
           <div className="field">
-            <label htmlFor="order-ref">Gateway reference for reconcile</label>
+            <label htmlFor="order-ref">Gateway reference for manual reconcile</label>
             <input
               id="order-ref"
               value={reference}
               minLength={4}
               onChange={(e) => setReference(e.target.value)}
             />
-            <p className="muted small">Used when you click Reconcile on a row in the table.</p>
+            <p className="muted small">
+              Prefer Pay with Razorpay on the order row. Manual reconcile is a fallback.
+            </p>
           </div>
           <button className="btn" type="submit" disabled={create.isPending}>
             Create pending order

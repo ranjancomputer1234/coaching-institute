@@ -58,7 +58,11 @@ export class DiagnosticsService {
         live: this.daily.isConfigured(),
         push: Boolean(this.config.get('PUSH_PROVIDER_KEY')),
         email: this.email.isConfigured(),
-        payments: Boolean(this.config.get('PAYMENT_PROVIDER_KEY')),
+        payments: Boolean(
+          (this.config.get('RAZORPAY_KEY_ID') &&
+            this.config.get('RAZORPAY_KEY_SECRET')) ||
+            this.config.get('PAYMENT_PROVIDER_KEY'),
+        ),
         storage: Boolean(
           this.config.get('CLOUDINARY_CLOUD_NAME') &&
             this.config.get('CLOUDINARY_API_KEY') &&
@@ -272,8 +276,17 @@ export class DiagnosticsService {
     });
 
     await push('providers.payments', 'Payments configured', 'providers', async () => {
-      if (!this.config.get('PAYMENT_PROVIDER_KEY')) {
-        return { status: 'warn', detail: 'PAYMENT_PROVIDER_KEY not set' };
+      if (
+        !(
+          this.config.get('RAZORPAY_KEY_ID') &&
+          this.config.get('RAZORPAY_KEY_SECRET')
+        ) &&
+        !this.config.get('PAYMENT_PROVIDER_KEY')
+      ) {
+        return {
+          status: 'warn',
+          detail: 'RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set',
+        };
       }
       return { status: 'pass' };
     });

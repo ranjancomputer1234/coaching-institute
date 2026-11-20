@@ -61,7 +61,11 @@ export class PlatformService {
       live: this.daily.isConfigured(),
       push: Boolean(this.config.get('PUSH_PROVIDER_KEY')),
       email: this.email.isConfigured(),
-      payments: Boolean(this.config.get('PAYMENT_PROVIDER_KEY')),
+      payments: Boolean(
+        (this.config.get('RAZORPAY_KEY_ID') &&
+          this.config.get('RAZORPAY_KEY_SECRET')) ||
+          this.config.get('PAYMENT_PROVIDER_KEY'),
+      ),
       // Object storage = Cloudinary (PDFs/raw). Same credentials as video backup.
       storage: Boolean(
         this.config.get('CLOUDINARY_CLOUD_NAME') &&
@@ -1285,7 +1289,9 @@ export class PlatformService {
         currency: product.currency,
         status: 'pending',
         providerStatus: this.providers().payments
-          ? 'configured_pending_adapter'
+          ? this.config.get('RAZORPAY_KEY_ID')
+            ? 'razorpay_ready'
+            : 'configured_pending_adapter'
           : 'not_configured',
       },
       include: { product: true },

@@ -33,6 +33,7 @@ import { LearnerLiveModule } from './modules/learner-live/learner-live.module';
 import { LearnerNotificationsModule } from './modules/learner-notifications/learner-notifications.module';
 import { EmailModule } from './modules/email/email.module';
 import { DiagnosticsModule } from './modules/diagnostics/diagnostics.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { DiagnosticsModule } from './modules/diagnostics/diagnostics.module';
     DocumentsModule,
     EntitlementsModule,
     PlatformModule,
+    PaymentsModule,
     HealthModule,
   ],
 })
