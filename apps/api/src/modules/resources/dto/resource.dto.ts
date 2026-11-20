@@ -115,6 +115,49 @@ export class CreateVideoUploadDto {
   lessonId?: string;
 }
 
+/** Admin asks for a Cloudinary raw (authenticated) upload slot for PDF/notes/audio. */
+export class CreateFileUploadDto {
+  @IsString()
+  @MinLength(1)
+  title!: string;
+
+  @IsEnum(ResourceKind)
+  kind!: ResourceKind;
+
+  @IsOptional()
+  @IsString()
+  fileName?: string;
+
+  @IsOptional()
+  @IsString()
+  mimeType?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  byteSize?: number;
+
+  @IsOptional()
+  @IsString()
+  courseId?: string;
+
+  @IsOptional()
+  @IsString()
+  semesterId?: string;
+
+  @IsOptional()
+  @IsString()
+  lessonId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  downloadable?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  previewAllowed?: boolean;
+}
+
 /** Empty string clears an optional link. Omit the field to leave it unchanged. */
 export class UpdateResourceDto {
   @IsOptional()

@@ -61,9 +61,13 @@ export class PlatformService {
       live: this.daily.isConfigured(),
       push: Boolean(this.config.get('PUSH_PROVIDER_KEY')),
       email: this.email.isConfigured(),
-      emailProvider: this.email.providerName(),
       payments: Boolean(this.config.get('PAYMENT_PROVIDER_KEY')),
-      storage: Boolean(this.config.get('OBJECT_STORAGE_BUCKET')),
+      // Object storage = Cloudinary (PDFs/raw). Same credentials as video backup.
+      storage: Boolean(
+        this.config.get('CLOUDINARY_CLOUD_NAME') &&
+          this.config.get('CLOUDINARY_API_KEY') &&
+          this.config.get('CLOUDINARY_API_SECRET'),
+      ),
       video: Boolean(
         this.config.get('MUX_TOKEN_ID') && this.config.get('MUX_TOKEN_SECRET'),
       ),

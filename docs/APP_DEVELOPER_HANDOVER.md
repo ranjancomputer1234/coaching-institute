@@ -919,21 +919,23 @@ When DRM is configured, `status` is `"ready"` and the object includes `scheme` (
 
 No Bearer token. `token` is the query value inside `delivery.url`. The session is single-purpose and expires with the authorization.
 
-Until object storage is connected, this returns metadata, not file bytes.
+Cloudinary-backed files (`storageKey` starts with `cloudinary:`) return `status: "ready"` and a short-lived **authenticated** `url`. Use that URL only inside the app before `expiresAt`. Legacy/non-Cloudinary keys still return metadata-only.
 
-**Response `200`**
+**Response `200` (Cloudinary file)**
 
 ```json
 {
   "resourceId": "res_pdf",
-  "storageKey": "seed/tally-getting-started.pdf.enc",
+  "storageKey": "cloudinary:redi/storage/f_abc",
   "mimeType": "application/pdf",
   "contentVersion": 1,
-  "encryptionAlgo": "aes-256-gcm",
-  "packagingFormat": "encrypted_pdf",
-  "checksumSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "status": "metadata_only_until_storage_wired",
-  "note": "Wire PROTECTED_CONTENT storage provider to stream ciphertext bytes. Do not redirect to a public CDN URL for protected resources."
+  "encryptionAlgo": null,
+  "packagingFormat": "cloudinary_raw",
+  "checksumSha256": null,
+  "status": "ready",
+  "url": "https://res.cloudinary.com/…/raw/authenticated/s--…--/redi/storage/f_abc",
+  "expiresAt": "2026-11-20T12:00:00.000Z",
+  "note": "Authenticated Cloudinary URL. Use only inside the REDI app before expiresAt."
 }
 ```
 

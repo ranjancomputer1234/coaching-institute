@@ -58,4 +58,27 @@ describe('CloudinaryService (backup provider)', () => {
       'https://res.cloudinary.com/demo-cloud/video/upload/redi/videos/v_abc123.mp4',
     );
   });
+
+  it('creates a signed authenticated raw upload for PDFs', () => {
+    const upload = configured().createSignedRawUpload('f_abc');
+    expect(upload.uploadUrl).toBe(
+      'https://api.cloudinary.com/v1_1/demo-cloud/raw/upload',
+    );
+    expect(upload.publicId).toBe('redi/storage/f_abc');
+    expect(upload.formFields.type).toBe('authenticated');
+  });
+
+  it('builds an authenticated raw delivery URL', () => {
+    const url = configured().authenticatedFileUrl(
+      'redi/storage/f_abc',
+      new Date(Date.now() + 60_000),
+    );
+    expect(url).toContain(
+      'https://res.cloudinary.com/demo-cloud/raw/authenticated/s--',
+    );
+    expect(url).toContain('/redi/storage/f_abc');
+    expect(configured().publicIdFromStorageKey('cloudinary:redi/storage/f_abc')).toBe(
+      'redi/storage/f_abc',
+    );
+  });
 });

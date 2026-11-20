@@ -45,12 +45,25 @@ export class DiagnosticsService {
         keyLooksLikeSmtp: key.startsWith('xsmtpsib-'),
         keyLooksLikeApi: key.startsWith('xkeysib-'),
       },
+      storage: {
+        provider:
+          this.config.get<string>('OBJECT_STORAGE_PROVIDER') || 'cloudinary',
+        configured: Boolean(
+          this.config.get('CLOUDINARY_CLOUD_NAME') &&
+            this.config.get('CLOUDINARY_API_KEY') &&
+            this.config.get('CLOUDINARY_API_SECRET'),
+        ),
+      },
       providers: {
         live: this.daily.isConfigured(),
         push: Boolean(this.config.get('PUSH_PROVIDER_KEY')),
         email: this.email.isConfigured(),
         payments: Boolean(this.config.get('PAYMENT_PROVIDER_KEY')),
-        storage: Boolean(this.config.get('OBJECT_STORAGE_BUCKET')),
+        storage: Boolean(
+          this.config.get('CLOUDINARY_CLOUD_NAME') &&
+            this.config.get('CLOUDINARY_API_KEY') &&
+            this.config.get('CLOUDINARY_API_SECRET'),
+        ),
         videoMux: Boolean(
           this.config.get('MUX_TOKEN_ID') && this.config.get('MUX_TOKEN_SECRET'),
         ),

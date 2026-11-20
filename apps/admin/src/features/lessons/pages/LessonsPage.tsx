@@ -299,8 +299,9 @@ export function LessonsPage() {
   const [lifecycleFilter, setLifecycleFilter] = useState('');
 
   const [uploadKind, setUploadKind] = useState('pdf');
-  const [storageKey, setStorageKey] = useState('');
   const [nonVideoTitle, setNonVideoTitle] = useState('');
+  const [nonVideoFile, setNonVideoFile] = useState<File | null>(null);
+  const [fileUploadPercent, setFileUploadPercent] = useState<number | null>(null);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
   const [uploadCourseId, setUploadCourseId] = useState('');
@@ -355,8 +356,9 @@ export function LessonsPage() {
 
   const openUpload = () => {
     setUploadKind('video');
-    setStorageKey('');
     setNonVideoTitle('');
+    setNonVideoFile(null);
+    setFileUploadPercent(null);
     setUploadQueue([]);
     setUploadNote(null);
     setUploadCourseId('');
@@ -436,26 +438,39 @@ export function LessonsPage() {
   });
 
   const createNonVideo = useMutation({
-    mutationFn: () =>
-      apiFetch('/admin/resources', {
+    mutationFn: async () => {
+      if (!nonVideoFile) throw new Error('Choose a file to upload');
+      const title = nonVideoTitle.trim() || titleFromFileName(nonVideoFile.name);
+      setFileUploadPercent(0);
+      const start = await apiFetch<VideoUploadStart>('/admin/resources/file-uploads', {
         method: 'POST',
         body: JSON.stringify({
-          title: nonVideoTitle,
+          title,
           kind: uploadKind,
-          mimeType: uploadKind === 'audio' ? 'audio/mpeg' : 'application/pdf',
-          storageKey: storageKey || undefined,
+          fileName: nonVideoFile.name,
+          mimeType:
+            nonVideoFile.type ||
+            (uploadKind === 'audio' ? 'audio/mpeg' : 'application/pdf'),
+          byteSize: nonVideoFile.size,
           downloadable: true,
           ...uploadPlacement(),
         }),
-      }),
+      });
+      await uploadFileWithProgress(start, nonVideoFile, 'Cloudinary', (percent) =>
+        setFileUploadPercent(percent),
+      );
+      return start;
+    },
     onSuccess: () => {
       setNonVideoTitle('');
-      setStorageKey('');
-      setUploadNote('Resource added.');
+      setNonVideoFile(null);
+      setFileUploadPercent(null);
+      setUploadNote('File uploaded to Cloudinary and resource created.');
       queryClient.invalidateQueries({ queryKey: ['resources'] });
     },
     onError: (error) => {
-      setUploadNote(error instanceof Error ? error.message : 'Could not add resource');
+      setFileUploadPercent(null);
+      setUploadNote(error instanceof Error ? error.message : 'Could not upload file');
     },
   });
 
@@ -994,20 +1009,53 @@ export function LessonsPage() {
                   id="upload-title"
                   value={nonVideoTitle}
                   onChange={(event) => setNonVideoTitle(event.target.value)}
-                  required
+                  placeholder="Optional — defaults from file name"
                 />
               </div>
               <div className="field">
-                <label htmlFor="upload-storage-key">Storage key</label>
+                <label htmlFor="upload-file">
+                  File (Cloudinary object storage)
+                </label>
                 <input
-                  id="upload-storage-key"
-                  value={storageKey}
-                  placeholder="private/course/file.enc"
-                  onChange={(event) => setStorageKey(event.target.value)}
+                  id="upload-file"
+                  type="file"
+                  accept={
+                    uploadKind === 'audio'
+                      ? 'audio/*'
+                      : uploadKind === 'notes'
+                        ? '.pdf,application/pdf,text/plain'
+                        : 'application/pdf,.pdf'
+                  }
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    setNonVideoFile(file);
+                    if (file && !nonVideoTitle.trim()) {
+                      setNonVideoTitle(titleFromFileName(file.name));
+                    }
+                    event.target.value = '';
+                  }}
                 />
+                {nonVideoFile ? (
+                  <p className="muted small">
+                    {nonVideoFile.name} · {(nonVideoFile.size / 1024).toFixed(0)} KB
+                  </p>
+                ) : (
+                  <p className="muted small">
+                    Uploads as an authenticated Cloudinary raw asset for protected download.
+                  </p>
+                )}
+                {fileUploadPercent !== null ? (
+                  <div className="upload-progress" aria-hidden>
+                    <span style={{ width: `${fileUploadPercent}%` }} />
+                  </div>
+                ) : null}
               </div>
-              <button className="btn" type="submit" disabled={createNonVideo.isPending}>
-                Add resource
+              <button
+                className="btn"
+                type="submit"
+                disabled={createNonVideo.isPending || !nonVideoFile}
+              >
+                {createNonVideo.isPending ? 'Uploading…' : 'Upload file'}
               </button>
             </>
           )}

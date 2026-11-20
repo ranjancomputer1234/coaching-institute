@@ -1,6 +1,6 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 
 type CloudinaryResource = {
   public_id: string;
@@ -10,18 +10,16 @@ type CloudinaryResource = {
 };
 
 /**
- * Cloudinary adapter — the BACKUP video provider (Mux stays primary for
- * signed playback / best UX). Used automatically when Mux is not configured
- * or its upload-slot request fails, or forced with VIDEO_PROVIDER=cloudinary.
+ * Cloudinary adapter — BACKUP video provider (Mux stays primary) and the
+ * object-storage backend for protected PDFs / raw files.
  *
  * Credentials live ONLY in apps/api/.env (never in the admin app):
  *   CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
- * Get them from cloudinary.com → Dashboard (top of the home page) or
- * Settings → API Keys. The browser uploads directly to Cloudinary with a
- * short-lived server signature — the API secret never leaves the server.
+ * Optional for time-limited delivery tokens:
+ *   CLOUDINARY_AUTH_TOKEN_KEY (from Cloudinary Settings → Security)
  *
- * Note: backup playback is an unlisted Cloudinary delivery URL (random
- * public_id), not signed/DRM like Mux. Keep Mux primary for paid content.
+ * The browser uploads directly to Cloudinary with a short-lived server
+ * signature — the API secret never leaves the server.
  */
 @Injectable()
 export class CloudinaryService {
@@ -110,6 +108,85 @@ export class CloudinaryService {
         signature: this.sign(params),
       },
     };
+  }
+
+  /**
+   * Signed slot for a protected PDF/notes/audio file (raw upload, authenticated type).
+   * Browser POSTs multipart form directly to Cloudinary.
+   */
+  createSignedRawUpload(publicIdSuffix: string) {
+    this.assertConfigured();
+    const folder =
+      this.config.get<string>('CLOUDINARY_FILES_FOLDER') ?? 'redi/storage';
+    const fullPublicId = `${folder}/${publicIdSuffix}`;
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const params: Record<string, string> = {
+      public_id: fullPublicId,
+      timestamp,
+      type: 'authenticated',
+    };
+    return {
+      uploadUrl: `https://api.cloudinary.com/v1_1/${this.cloudName()}/raw/upload`,
+      publicId: fullPublicId,
+      formFields: {
+        ...params,
+        api_key: this.config.get<string>('CLOUDINARY_API_KEY')!,
+        signature: this.sign(params),
+      },
+    };
+  }
+
+  /**
+   * Short-lived delivery URL for an authenticated raw asset.
+   * Always uses a delivery signature. When CLOUDINARY_AUTH_TOKEN_KEY is set,
+   * also attaches a time-limited `__cld_token` so the URL stops working after expiresAt.
+   */
+  authenticatedFileUrl(publicId: string, expiresAt: Date): string {
+    this.assertConfigured();
+    const secret = this.config.get<string>('CLOUDINARY_API_SECRET')!;
+    const toSign = publicId;
+    const signature = createHash('sha1')
+      .update(toSign + secret)
+      .digest('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .slice(0, 8);
+    const encodedId = publicId
+      .split('/')
+      .map((part) => encodeURIComponent(part))
+      .join('/');
+    let url = `https://res.cloudinary.com/${this.cloudName()}/raw/authenticated/s--${signature}--/${encodedId}`;
+
+    const tokenKey = this.config.get<string>('CLOUDINARY_AUTH_TOKEN_KEY')?.trim();
+    if (tokenKey) {
+      const token = this.buildAuthToken(publicId, expiresAt, tokenKey);
+      url += `?__cld_token=${encodeURIComponent(token)}`;
+    }
+    return url;
+  }
+
+  /** Cloudinary auth token (HMAC-SHA256) for time-limited access. */
+  private buildAuthToken(
+    publicId: string,
+    expiresAt: Date,
+    hexKey: string,
+  ): string {
+    const start = Math.floor(Date.now() / 1000) - 30;
+    const expiration = Math.floor(expiresAt.getTime() / 1000);
+    const acl = `/${publicId}`;
+    const toSign = `st=${start}~exp=${expiration}~acl=${acl}`;
+    const keyBuf = Buffer.from(hexKey, 'hex');
+    const digest = createHmac('sha256', keyBuf).update(toSign).digest('hex');
+    return `${toSign}~hmac=${digest}`;
+  }
+
+  /** Strip `cloudinary:` prefix from a mediaAsset.storageKey. */
+  publicIdFromStorageKey(storageKey: string): string | null {
+    const key = storageKey.trim();
+    if (key.startsWith('cloudinary:')) {
+      return key.slice('cloudinary:'.length) || null;
+    }
+    return null;
   }
 
   /** Poll target: 200 once Cloudinary has ingested the video, 404 while not. */

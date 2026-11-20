@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ResourcesService } from './resources.service';
 import {
+  CreateFileUploadDto,
   CreateResourceDto,
   CreateVideoUploadDto,
   DownloadAuthorizationDto,
@@ -66,6 +67,16 @@ export class ResourcesController {
     @CurrentUser() user: AdminActor,
   ) {
     return this.resources.createVideoUpload(dto, user);
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Post('admin/resources/file-uploads')
+  @RequirePermissions('content.create')
+  createFileUpload(
+    @Body() dto: CreateFileUploadDto,
+    @CurrentUser() user: AdminActor,
+  ) {
+    return this.resources.createFileUpload(dto, user);
   }
 
   @UseGuards(JwtAuthGuard, PermissionsGuard)

@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -16,6 +17,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ContentAccessService } from '../content-access/content-access.service';
 import {
+  CreateFileUploadDto,
   CreateResourceDto,
   CreateVideoUploadDto,
   DownloadAuthorizationDto,
@@ -157,6 +159,7 @@ export class ResourcesService {
     const placement = await this.resolvePlacement(dto);
     let mediaAssetId = dto.mediaAssetId;
     if (!mediaAssetId && dto.storageKey) {
+      const isCloudinary = dto.storageKey.startsWith('cloudinary:');
       const asset = await this.prisma.mediaAsset.create({
         data: {
           storageKey: dto.storageKey,
@@ -164,7 +167,11 @@ export class ResourcesService {
           byteSize: dto.byteSize,
           checksumSha256: dto.checksumSha256,
           encryptionAlgo: dto.encryptionAlgo,
-          packagingFormat: dto.packagingFormat,
+          packagingFormat:
+            dto.packagingFormat ??
+            (isCloudinary ? 'cloudinary_raw' : undefined),
+          provider: isCloudinary ? 'cloudinary' : undefined,
+          providerStatus: isCloudinary ? 'ready' : undefined,
           drmScheme: dto.drmScheme ?? DrmScheme.none,
           drmContentId: dto.drmContentId,
           licenseServiceUrl: dto.licenseServiceUrl,
@@ -899,11 +906,34 @@ export class ResourcesService {
       data: { usedAt: new Date() },
     });
 
-    // Placeholder delivery metadata until object storage is wired.
-    // Never return exportable public URLs for protected assets.
+    const storageKey = session.resource.mediaAsset?.storageKey ?? null;
+    const publicId = storageKey
+      ? this.cloudinary.publicIdFromStorageKey(storageKey)
+      : null;
+
+    if (publicId && this.cloudinary.isConfigured()) {
+      const url = this.cloudinary.authenticatedFileUrl(
+        publicId,
+        session.expiresAt,
+      );
+      return {
+        resourceId,
+        storageKey,
+        mimeType: session.resource.mimeType,
+        contentVersion: session.resource.contentVersion,
+        encryptionAlgo: session.resource.mediaAsset?.encryptionAlgo ?? null,
+        packagingFormat: session.resource.mediaAsset?.packagingFormat ?? null,
+        checksumSha256: session.resource.mediaAsset?.checksumSha256 ?? null,
+        status: 'ready',
+        url,
+        expiresAt: session.expiresAt.toISOString(),
+        note: 'Authenticated Cloudinary URL. Use only inside the REDI app before expiresAt.',
+      };
+    }
+
     return {
       resourceId,
-      storageKey: session.resource.mediaAsset?.storageKey ?? null,
+      storageKey,
       mimeType: session.resource.mimeType,
       contentVersion: session.resource.contentVersion,
       encryptionAlgo: session.resource.mediaAsset?.encryptionAlgo ?? null,
@@ -912,7 +942,95 @@ export class ResourcesService {
       status: session.resource.mediaAsset
         ? 'metadata_only_until_storage_wired'
         : 'missing_media_asset',
-      note: 'Wire PROTECTED_CONTENT storage provider to stream ciphertext bytes. Do not redirect to a public CDN URL for protected resources.',
+      note: storageKey
+        ? 'Asset is not a Cloudinary-backed file (storageKey must start with cloudinary:).'
+        : 'No media asset on this resource.',
+    };
+  }
+
+  /**
+   * PDF / notes / audio upload step 1: draft resource + Cloudinary raw
+   * authenticated upload slot. Browser POSTs the file directly to Cloudinary.
+   */
+  async createFileUpload(dto: CreateFileUploadDto, actor: AdminActor) {
+    if (!this.cloudinary.isConfigured()) {
+      throw new ServiceUnavailableException({
+        code: 'STORAGE_NOT_CONFIGURED',
+        message:
+          'Object storage is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET.',
+        fieldErrors: {},
+      });
+    }
+
+    const kind = dto.kind;
+    if (kind === ResourceKind.video) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Use /admin/resources/video-uploads for videos',
+        fieldErrors: { kind: 'Use video-uploads for video' },
+      });
+    }
+    const mimeType =
+      dto.mimeType ||
+      (kind === ResourceKind.audio
+        ? 'audio/mpeg'
+        : kind === ResourceKind.notes
+          ? 'application/pdf'
+          : 'application/pdf');
+    const suffix = `f_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const signed = this.cloudinary.createSignedRawUpload(suffix);
+
+    const placement = await this.resolvePlacement(dto);
+    const asset = await this.prisma.mediaAsset.create({
+      data: {
+        storageKey: `cloudinary:${signed.publicId}`,
+        mimeType,
+        byteSize: dto.byteSize,
+        packagingFormat: 'cloudinary_raw',
+        provider: 'cloudinary',
+        providerStatus: 'ready',
+        drmScheme: DrmScheme.none,
+        lifecycle: ContentLifecycle.published,
+      },
+    });
+
+    const resource = await this.prisma.resource.create({
+      data: {
+        title: dto.title.trim(),
+        kind,
+        mimeType,
+        byteSize: dto.byteSize,
+        ...this.placementConnect(placement),
+        mediaAsset: { connect: { id: asset.id } },
+        downloadable: dto.downloadable ?? true,
+        previewAllowed: dto.previewAllowed ?? false,
+        lifecycle: ContentLifecycle.published,
+        publishedAt: new Date(),
+      },
+    });
+
+    await this.audit.write({
+      actorId: actor.userId,
+      actorDisplay: actor.email,
+      action: 'resource.file_upload_start',
+      resourceType: 'Resource',
+      resourceId: resource.id,
+      after: {
+        title: resource.title,
+        kind: resource.kind,
+        storageKey: asset.storageKey,
+        provider: 'cloudinary',
+      },
+    });
+
+    return {
+      resourceId: resource.id,
+      provider: 'cloudinary' as const,
+      uploadUrl: signed.uploadUrl,
+      uploadMethod: 'POST_FORM' as const,
+      formFields: signed.formFields,
+      storageKey: asset.storageKey,
+      status: 'ready_to_upload',
     };
   }
 }
