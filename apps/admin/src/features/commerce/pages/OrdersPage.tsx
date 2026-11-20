@@ -24,6 +24,23 @@ type Order = {
   product?: { title: string; sku: string; courseId?: string | null };
 };
 
+type Learner = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+};
+
+type Product = {
+  id: string;
+  sku: string;
+  title: string;
+  pricePaise: number;
+  courseId?: string | null;
+  lifecycle?: string;
+};
+
 type ReconcileResult = {
   order: Order;
   entitlement: { id: string; courseId: string | null } | null;
@@ -66,6 +83,18 @@ export function OrdersPage() {
   const list = useQuery({
     queryKey: ['orders'],
     queryFn: () => apiFetch<Order[]>('/admin/orders'),
+  });
+
+  const learners = useQuery({
+    queryKey: ['learners', 'order-picker'],
+    queryFn: () => apiFetch<Learner[]>('/admin/learners'),
+    enabled: drawerOpen,
+  });
+
+  const products = useQuery({
+    queryKey: ['products', 'order-picker'],
+    queryFn: () => apiFetch<Product[]>('/admin/products'),
+    enabled: drawerOpen,
   });
 
   const create = useMutation({
@@ -146,6 +175,15 @@ export function OrdersPage() {
     [rows],
   );
 
+  const sellableProducts = useMemo(
+    () =>
+      (products.data ?? []).filter(
+        (p) => p.pricePaise >= 100 && p.lifecycle !== 'archived',
+      ),
+    [products.data],
+  );
+
+  const selectedProduct = sellableProducts.find((p) => p.id === productId);
   const razorpayReady = Boolean(paymentsConfig.data?.configured);
 
   return (
@@ -154,9 +192,9 @@ export function OrdersPage() {
         <div>
           <h1>Orders & payments</h1>
           <p>
-            Create a pending order, then collect payment with Razorpay Standard
-            Checkout. Verified payments grant course access when the product has
-            a course ID. Manual reconcile remains available as a fallback.
+            Pick a learner and a product, create a pending order, then collect
+            payment with Razorpay. Verified payments grant course access when the
+            product has a course ID.
           </p>
         </div>
         <PageHeaderActions>
@@ -191,12 +229,16 @@ export function OrdersPage() {
 
       {payNote ? <p className="muted">{payNote}</p> : null}
       {payError ? <p className="error">{payError}</p> : null}
+      {reconcile.error instanceof Error ? (
+        <p className="error">{reconcile.error.message}</p>
+      ) : null}
 
       <PageState
         loading={list.isLoading}
         error={list.error instanceof Error ? list.error : null}
         empty={!list.isLoading && rows.length === 0}
         emptyTitle="No orders"
+        emptyHint="Use Create order, then Pay with Razorpay on the new row."
       >
         <TableFilterBar
           search={{
@@ -226,6 +268,19 @@ export function OrdersPage() {
             setProvider('');
           }}
         />
+        {canReconcile ? (
+          <div className="panel" style={{ marginBottom: '0.75rem' }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label htmlFor="order-ref-table">Manual reconcile reference</label>
+              <input
+                id="order-ref-table"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="Gateway / UTR reference (min 4 characters)"
+              />
+            </div>
+          </div>
+        ) : null}
         <div className="panel">
           <table>
             <thead>
@@ -287,7 +342,10 @@ export function OrdersPage() {
 
       <ContentDrawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => {
+          setDrawerOpen(false);
+          create.reset();
+        }}
         title="Create pending order"
         size="full"
       >
@@ -299,37 +357,77 @@ export function OrdersPage() {
           }}
         >
           <div className="field">
-            <label htmlFor="order-learner">Learner ID</label>
-            <input
+            <label htmlFor="order-learner">Learner</label>
+            <select
               id="order-learner"
               value={learnerId}
               onChange={(e) => setLearnerId(e.target.value)}
               required
-            />
+              disabled={learners.isLoading}
+            >
+              <option value="">
+                {learners.isLoading ? 'Loading learners…' : 'Select a learner'}
+              </option>
+              {(learners.data ?? []).map((learner) => (
+                <option key={learner.id} value={learner.id}>
+                  {`${learner.firstName} ${learner.lastName}`.trim()}
+                  {learner.email ? ` · ${learner.email}` : ''}
+                  {learner.phone ? ` · ${learner.phone}` : ''}
+                </option>
+              ))}
+            </select>
+            <p className="field-hint">
+              Choose from existing learners. Do not type a made-up ID.
+            </p>
           </div>
           <div className="field">
-            <label htmlFor="order-product">Product ID</label>
-            <input
+            <label htmlFor="order-product">Product</label>
+            <select
               id="order-product"
               value={productId}
               onChange={(e) => setProductId(e.target.value)}
               required
-            />
+              disabled={products.isLoading}
+            >
+              <option value="">
+                {products.isLoading
+                  ? 'Loading products…'
+                  : sellableProducts.length
+                    ? 'Select a product'
+                    : 'No sellable products yet'}
+              </option>
+              {sellableProducts.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.title} · {product.sku} · ₹
+                  {(product.pricePaise / 100).toFixed(2)}
+                </option>
+              ))}
+            </select>
+            {sellableProducts.length === 0 && !products.isLoading ? (
+              <p className="error">
+                Create a product under Products & pricing first (price at least ₹1).
+              </p>
+            ) : null}
+            {selectedProduct ? (
+              <p className="field-hint">
+                Amount: ₹{(selectedProduct.pricePaise / 100).toFixed(2)}
+                {selectedProduct.courseId
+                  ? ` · unlocks course ${selectedProduct.courseId}`
+                  : ' · no course linked (pay will not auto-grant access)'}
+              </p>
+            ) : null}
           </div>
-          <div className="field">
-            <label htmlFor="order-ref">Gateway reference for manual reconcile</label>
-            <input
-              id="order-ref"
-              value={reference}
-              minLength={4}
-              onChange={(e) => setReference(e.target.value)}
-            />
-            <p className="muted small">
-              Prefer Pay with Razorpay on the order row. Manual reconcile is a fallback.
-            </p>
-          </div>
-          <button className="btn" type="submit" disabled={create.isPending}>
-            Create pending order
+          {create.error instanceof Error ? (
+            <p className="error">{create.error.message}</p>
+          ) : null}
+          <button
+            className="btn"
+            type="submit"
+            disabled={
+              create.isPending || !learnerId || !productId || sellableProducts.length === 0
+            }
+          >
+            {create.isPending ? 'Creating…' : 'Create pending order'}
           </button>
         </form>
       </ContentDrawer>

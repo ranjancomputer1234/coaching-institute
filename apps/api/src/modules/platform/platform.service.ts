@@ -1271,19 +1271,37 @@ export class PlatformService {
   }
 
   async createOrder(dto: CreateOrderDto, actor: Actor) {
+    const learner = await this.prisma.learner.findUnique({
+      where: { id: dto.learnerId },
+      select: { id: true },
+    });
+    if (!learner) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Learner not found. Pick a learner from the Learners list.',
+        fieldErrors: { learnerId: ['unknown learner'] },
+      });
+    }
     const product = await this.prisma.product.findUnique({
       where: { id: dto.productId },
     });
     if (!product) {
       throw new NotFoundException({
         code: 'NOT_FOUND',
-        message: 'Product not found',
-        fieldErrors: {},
+        message: 'Product not found. Create a product under Products & pricing first.',
+        fieldErrors: { productId: ['unknown product'] },
+      });
+    }
+    if (product.pricePaise < 100) {
+      throw new BadRequestException({
+        code: 'INVALID_AMOUNT',
+        message: 'Product price must be at least ₹1 (100 paise) before creating an order',
+        fieldErrors: { productId: ['price too low'] },
       });
     }
     const row = await this.prisma.order.create({
       data: {
-        learnerId: dto.learnerId,
+        learnerId: learner.id,
         productId: product.id,
         amountPaise: product.pricePaise,
         currency: product.currency,
